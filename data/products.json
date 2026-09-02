@@ -1,0 +1,859 @@
+[
+  {
+    "id": "maison-linen-trouser",
+    "name": "Maison Linen Trouser",
+    "category": "Trousers",
+    "price": 18500,
+    "colors": [
+      "Sand",
+      "Espresso",
+      "Ivory"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "fabric": "100% washed European linen",
+    "fit": "relaxed",
+    "care": "Machine wash cold, line dry, warm iron if needed",
+    "description": "A wide-leg trouser cut from washed European linen, finished with a soft pleat at the waist for movement and an easy drape through the hip. Designed to soften with every wear.",
+    "hero": "/catalog/maison-linen-trouser.jpg",
+    "gallery": [
+      "/catalog/maison-linen-trouser.jpg"
+    ],
+    "imagePrompt": "A wide-leg, high-waisted women's trouser in sand-colored washed linen with a soft pleat at the waist, relaxed drape, full length",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 33,
+        "waist": 26,
+        "hip": 35
+      },
+      {
+        "size": "S",
+        "chest": 35,
+        "waist": 28,
+        "hip": 37
+      },
+      {
+        "size": "M",
+        "chest": 37,
+        "waist": 30,
+        "hip": 39
+      },
+      {
+        "size": "L",
+        "chest": 39,
+        "waist": 32,
+        "hip": 41
+      },
+      {
+        "size": "XL",
+        "chest": 41,
+        "waist": 34,
+        "hip": 43
+      }
+    ],
+    "styleTags": [
+      "relaxed",
+      "resort",
+      "minimalist",
+      "warm-toned"
+    ],
+    "searchQuery": "linen trousers product"
+  },
+  {
+    "id": "atelier-wool-overcoat",
+    "name": "Atelier Wool Overcoat",
+    "category": "Outerwear",
+    "price": 49500,
+    "colors": [
+      "Camel",
+      "Charcoal",
+      "Espresso"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "fabric": "90% wool, 10% cashmere blend",
+    "fit": "tailored",
+    "care": "Dry clean only",
+    "description": "A double-faced wool and cashmere overcoat with a clean, tailored silhouette and notch lapel. Structured at the shoulder, softened everywhere else — the kind of coat that anchors an entire wardrobe.",
+    "hero": "/catalog/atelier-wool-overcoat.jpg",
+    "gallery": [
+      "/catalog/atelier-wool-overcoat.jpg"
+    ],
+    "imagePrompt": "A tailored double-breasted camel wool overcoat with notch lapel, structured shoulders, knee length, on a hanger or flat-lay, classic silhouette",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 34,
+        "waist": 28,
+        "hip": 36
+      },
+      {
+        "size": "S",
+        "chest": 36,
+        "waist": 30,
+        "hip": 38
+      },
+      {
+        "size": "M",
+        "chest": 38,
+        "waist": 32,
+        "hip": 40
+      },
+      {
+        "size": "L",
+        "chest": 40,
+        "waist": 34,
+        "hip": 42
+      },
+      {
+        "size": "XL",
+        "chest": 42,
+        "waist": 36,
+        "hip": 44
+      }
+    ],
+    "styleTags": [
+      "tailored",
+      "classic",
+      "cold-weather",
+      "neutral"
+    ],
+    "searchQuery": "wool overcoat fashion"
+  },
+  {
+    "id": "cascade-silk-blouse",
+    "name": "Cascade Silk Blouse",
+    "category": "Shirts",
+    "price": 21500,
+    "colors": [
+      "Champagne",
+      "Clay",
+      "Black"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "fabric": "100% mulberry silk",
+    "fit": "relaxed",
+    "care": "Hand wash cold or dry clean",
+    "description": "A fluid silk blouse with a draped cowl neckline and dolman sleeves that fall in soft cascades. Light enough to layer, polished enough to wear alone.",
+    "hero": "/catalog/cascade-silk-blouse.jpg",
+    "gallery": [
+      "/catalog/cascade-silk-blouse.jpg"
+    ],
+    "imagePrompt": "A fluid champagne-colored silk blouse with a draped cowl neckline and dolman sleeves, soft cascading fabric folds",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 32,
+        "waist": 25,
+        "hip": 34
+      },
+      {
+        "size": "S",
+        "chest": 34,
+        "waist": 27,
+        "hip": 36
+      },
+      {
+        "size": "M",
+        "chest": 36,
+        "waist": 29,
+        "hip": 38
+      },
+      {
+        "size": "L",
+        "chest": 38,
+        "waist": 31,
+        "hip": 40
+      }
+    ],
+    "styleTags": [
+      "fluid",
+      "elevated",
+      "evening",
+      "jewel-toned"
+    ],
+    "searchQuery": "silk blouse women"
+  },
+  {
+    "id": "ferro-tailored-blazer",
+    "name": "Ferro Tailored Blazer",
+    "category": "Outerwear",
+    "price": 38500,
+    "colors": [
+      "Black",
+      "Pinstripe",
+      "Olive"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "fabric": "Stretch wool suiting, 4% elastane",
+    "fit": "tailored",
+    "care": "Dry clean recommended",
+    "description": "A single-breasted blazer with a sharp shoulder and nipped waist, cut from stretch wool suiting that moves with you. Wear it as armor for the boardroom or undone over denim.",
+    "hero": "/catalog/ferro-tailored-blazer.jpg",
+    "gallery": [
+      "/catalog/ferro-tailored-blazer.jpg"
+    ],
+    "imagePrompt": "A single-breasted black wool suiting blazer with sharp tailored shoulders and a nipped waist, structured silhouette",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 33,
+        "waist": 27,
+        "hip": 35
+      },
+      {
+        "size": "S",
+        "chest": 35,
+        "waist": 29,
+        "hip": 37
+      },
+      {
+        "size": "M",
+        "chest": 37,
+        "waist": 31,
+        "hip": 39
+      },
+      {
+        "size": "L",
+        "chest": 39,
+        "waist": 33,
+        "hip": 41
+      },
+      {
+        "size": "XL",
+        "chest": 41,
+        "waist": 35,
+        "hip": 43
+      }
+    ],
+    "styleTags": [
+      "tailored",
+      "power dressing",
+      "sharp",
+      "versatile"
+    ],
+    "searchQuery": "tailored blazer"
+  },
+  {
+    "id": "sable-knit-turtleneck",
+    "name": "Sable Knit Turtleneck",
+    "category": "Knitwear",
+    "price": 16500,
+    "colors": [
+      "Camel",
+      "Forest",
+      "Cream"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "fabric": "100% merino wool",
+    "fit": "slim",
+    "care": "Hand wash cold, dry flat",
+    "description": "A fine-gauge merino turtleneck with a close, second-skin fit. Breathable enough for layering, substantial enough to wear on its own with tailored trousers.",
+    "hero": "/catalog/sable-knit-turtleneck.jpg",
+    "gallery": [
+      "/catalog/sable-knit-turtleneck.jpg"
+    ],
+    "imagePrompt": "A fine-gauge camel-colored merino wool turtleneck sweater with a close slim fit, ribbed neckline and cuffs",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 32,
+        "waist": 26,
+        "hip": 34
+      },
+      {
+        "size": "S",
+        "chest": 34,
+        "waist": 28,
+        "hip": 36
+      },
+      {
+        "size": "M",
+        "chest": 36,
+        "waist": 30,
+        "hip": 38
+      },
+      {
+        "size": "L",
+        "chest": 38,
+        "waist": 32,
+        "hip": 40
+      },
+      {
+        "size": "XL",
+        "chest": 40,
+        "waist": 34,
+        "hip": 42
+      }
+    ],
+    "styleTags": [
+      "layering",
+      "minimalist",
+      "cold-weather",
+      "earthy"
+    ],
+    "searchQuery": "knit turtleneck sweater"
+  },
+  {
+    "id": "oraline-midi-dress",
+    "name": "Oraline Midi Dress",
+    "category": "Dresses",
+    "price": 28500,
+    "colors": [
+      "Terracotta",
+      "Ink",
+      "Ecru"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "fabric": "100% crepe viscose",
+    "fit": "tailored",
+    "care": "Hand wash cold, hang dry",
+    "description": "A bias-cut midi dress in fluid crepe that skims the body without clinging. A subtle side slit and adjustable waist tie let it move from desk to dinner.",
+    "hero": "/catalog/oraline-midi-dress.jpg",
+    "gallery": [
+      "/catalog/oraline-midi-dress.jpg"
+    ],
+    "imagePrompt": "A bias-cut terracotta crepe midi dress with a fluid drape, subtle side slit, and adjustable waist tie, elegant silhouette",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 32,
+        "waist": 25,
+        "hip": 35
+      },
+      {
+        "size": "S",
+        "chest": 34,
+        "waist": 27,
+        "hip": 37
+      },
+      {
+        "size": "M",
+        "chest": 36,
+        "waist": 29,
+        "hip": 39
+      },
+      {
+        "size": "L",
+        "chest": 38,
+        "waist": 31,
+        "hip": 41
+      }
+    ],
+    "styleTags": [
+      "fluid",
+      "evening",
+      "warm-toned",
+      "versatile"
+    ],
+    "searchQuery": "midi dress"
+  },
+  {
+    "id": "harbor-selvedge-jean",
+    "name": "Harbor Selvedge Jean",
+    "category": "Denim",
+    "price": 19500,
+    "colors": [
+      "Indigo",
+      "Washed Black"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "fabric": "100% selvedge cotton denim, 13oz",
+    "fit": "slim",
+    "care": "Wash inside-out in cold water, line dry",
+    "description": "A straight-leg jean in heavyweight selvedge denim that breaks in beautifully over time. Cut with a mid-rise and a clean leg line that pairs with everything from knitwear to blazers.",
+    "hero": "/catalog/harbor-selvedge-jean.jpg",
+    "gallery": [
+      "/catalog/harbor-selvedge-jean.jpg"
+    ],
+    "imagePrompt": "A pair of indigo selvedge denim straight-leg jeans, heavyweight cotton, mid-rise, clean leg line, slim fit",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 33,
+        "waist": 26,
+        "hip": 35
+      },
+      {
+        "size": "S",
+        "chest": 35,
+        "waist": 28,
+        "hip": 37
+      },
+      {
+        "size": "M",
+        "chest": 37,
+        "waist": 30,
+        "hip": 39
+      },
+      {
+        "size": "L",
+        "chest": 39,
+        "waist": 32,
+        "hip": 41
+      },
+      {
+        "size": "XL",
+        "chest": 41,
+        "waist": 34,
+        "hip": 43
+      }
+    ],
+    "styleTags": [
+      "everyday",
+      "durable",
+      "classic",
+      "versatile"
+    ],
+    "searchQuery": "denim jeans product"
+  },
+  {
+    "id": "pavone-silk-scarf",
+    "name": "Pavone Silk Scarf",
+    "category": "Accessories",
+    "price": 9500,
+    "colors": [
+      "Emerald Print",
+      "Clay Print",
+      "Ink Print"
+    ],
+    "sizes": [
+      "One Size"
+    ],
+    "fabric": "100% silk twill",
+    "fit": "relaxed",
+    "care": "Dry clean or gentle hand wash",
+    "description": "A generously sized silk twill scarf in a hand-painted botanical print. Knot it at the neck, tie it to a bag, or wear it as a sash — a small piece that finishes everything.",
+    "hero": "/catalog/pavone-silk-scarf.jpg",
+    "gallery": [
+      "/catalog/pavone-silk-scarf.jpg"
+    ],
+    "imagePrompt": "A large square silk twill scarf with a hand-painted emerald green botanical print, folded to show the pattern and silk sheen",
+    "sizeChart": [
+      {
+        "size": "One Size",
+        "chest": 0,
+        "waist": 0,
+        "hip": 0
+      }
+    ],
+    "styleTags": [
+      "accessory",
+      "jewel-toned",
+      "finishing touch",
+      "gifting"
+    ],
+    "searchQuery": "silk scarf"
+  },
+  {
+    "id": "soren-cotton-shirt",
+    "name": "Sorén Cotton Shirt",
+    "category": "Shirts",
+    "price": 15500,
+    "colors": [
+      "White",
+      "Sky Blue",
+      "Stone"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "fabric": "100% Portuguese cotton poplin",
+    "fit": "tailored",
+    "care": "Machine wash cold, warm iron",
+    "description": "A crisp poplin shirt with a clean point collar and a slightly tapered body. The kind of shirt that looks equally at home under a blazer or rolled at the sleeves with denim.",
+    "hero": "/catalog/soren-cotton-shirt.jpg",
+    "gallery": [
+      "/catalog/soren-cotton-shirt.jpg"
+    ],
+    "imagePrompt": "A crisp white cotton poplin button-up shirt with a clean point collar, slightly tapered tailored body, long sleeves",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 34,
+        "waist": 28,
+        "hip": 35
+      },
+      {
+        "size": "S",
+        "chest": 36,
+        "waist": 30,
+        "hip": 37
+      },
+      {
+        "size": "M",
+        "chest": 38,
+        "waist": 32,
+        "hip": 39
+      },
+      {
+        "size": "L",
+        "chest": 40,
+        "waist": 34,
+        "hip": 41
+      },
+      {
+        "size": "XL",
+        "chest": 42,
+        "waist": 36,
+        "hip": 43
+      }
+    ],
+    "styleTags": [
+      "crisp",
+      "classic",
+      "office",
+      "versatile"
+    ],
+    "searchQuery": "white cotton shirt"
+  },
+  {
+    "id": "belmont-suede-loafer",
+    "name": "Belmont Suede Loafer",
+    "category": "Shoes",
+    "price": 26500,
+    "colors": [
+      "Chestnut",
+      "Olive",
+      "Black"
+    ],
+    "sizes": [
+      "36",
+      "37",
+      "38",
+      "39",
+      "40",
+      "41",
+      "42"
+    ],
+    "fabric": "Suede upper, leather sole",
+    "fit": "tailored",
+    "care": "Brush clean, protect with suede spray",
+    "description": "A penny loafer in butter-soft suede with a hand-stitched apron toe and a leather sole that moulds to your step. Effortlessly dressy, endlessly wearable.",
+    "hero": "/catalog/belmont-suede-loafer.jpg",
+    "gallery": [
+      "/catalog/belmont-suede-loafer.jpg"
+    ],
+    "imagePrompt": "A pair of chestnut brown suede penny loafers with a hand-stitched apron toe and leather sole, classic shoe silhouette",
+    "sizeChart": [
+      {
+        "size": "One Size",
+        "chest": 0,
+        "waist": 0,
+        "hip": 0
+      }
+    ],
+    "styleTags": [
+      "footwear",
+      "classic",
+      "earthy",
+      "finishing touch"
+    ],
+    "searchQuery": "suede loafers"
+  },
+  {
+    "id": "verdant-cashmere-cardigan",
+    "name": "Verdant Cashmere Cardigan",
+    "category": "Knitwear",
+    "price": 32500,
+    "colors": [
+      "Sage",
+      "Oatmeal",
+      "Navy"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "fabric": "100% recycled cashmere",
+    "fit": "relaxed",
+    "care": "Hand wash cold, dry flat",
+    "description": "An oversized cardigan in airy recycled cashmere with horn buttons and dropped shoulders. Made for layering over slips and shirting alike, it gets softer with every wash.",
+    "hero": "/catalog/verdant-cashmere-cardigan.jpg",
+    "gallery": [
+      "/catalog/verdant-cashmere-cardigan.jpg"
+    ],
+    "imagePrompt": "An oversized sage green cashmere cardigan with horn buttons and dropped shoulders, cozy relaxed knit texture",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 36,
+        "waist": 32,
+        "hip": 38
+      },
+      {
+        "size": "S",
+        "chest": 38,
+        "waist": 34,
+        "hip": 40
+      },
+      {
+        "size": "M",
+        "chest": 40,
+        "waist": 36,
+        "hip": 42
+      },
+      {
+        "size": "L",
+        "chest": 42,
+        "waist": 38,
+        "hip": 44
+      },
+      {
+        "size": "XL",
+        "chest": 44,
+        "waist": 40,
+        "hip": 46
+      }
+    ],
+    "styleTags": [
+      "cozy",
+      "layering",
+      "sage",
+      "relaxed"
+    ],
+    "searchQuery": "cashmere cardigan"
+  },
+  {
+    "id": "tencel-wide-jumpsuit",
+    "name": "Tencel Wide Jumpsuit",
+    "category": "Dresses",
+    "price": 24500,
+    "colors": [
+      "Olive",
+      "Black",
+      "Sand"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "fabric": "Tencel-cotton blend",
+    "fit": "relaxed",
+    "care": "Machine wash cold, hang dry",
+    "description": "A one-piece jumpsuit with a wrap front, wide-leg cut, and a fluid Tencel-cotton blend that drapes like silk but wears like cotton. One garment, instantly dressed.",
+    "hero": "/catalog/tencel-wide-jumpsuit.jpg",
+    "gallery": [
+      "/catalog/tencel-wide-jumpsuit.jpg"
+    ],
+    "imagePrompt": "An olive green wide-leg jumpsuit with a wrap front in a fluid Tencel-cotton blend, relaxed one-piece silhouette",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 32,
+        "waist": 26,
+        "hip": 36
+      },
+      {
+        "size": "S",
+        "chest": 34,
+        "waist": 28,
+        "hip": 38
+      },
+      {
+        "size": "M",
+        "chest": 36,
+        "waist": 30,
+        "hip": 40
+      },
+      {
+        "size": "L",
+        "chest": 38,
+        "waist": 32,
+        "hip": 42
+      }
+    ],
+    "styleTags": [
+      "effortless",
+      "relaxed",
+      "earthy",
+      "versatile"
+    ],
+    "searchQuery": "wide leg jumpsuit"
+  },
+  {
+    "id": "castelo-leather-belt",
+    "name": "Castelo Leather Belt",
+    "category": "Accessories",
+    "price": 8500,
+    "colors": [
+      "Cognac",
+      "Black",
+      "Espresso"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L"
+    ],
+    "fabric": "Full-grain Italian leather",
+    "fit": "tailored",
+    "care": "Wipe clean, condition occasionally",
+    "description": "A full-grain leather belt with a brushed brass buckle, cut slightly narrow for a refined finish under tailoring or denim alike.",
+    "hero": "/catalog/castelo-leather-belt.jpg",
+    "gallery": [
+      "/catalog/castelo-leather-belt.jpg"
+    ],
+    "imagePrompt": "A cognac full-grain Italian leather belt with a brushed brass buckle, coiled neatly to show texture and stitching",
+    "sizeChart": [
+      {
+        "size": "One Size",
+        "chest": 0,
+        "waist": 0,
+        "hip": 0
+      }
+    ],
+    "styleTags": [
+      "accessory",
+      "classic",
+      "finishing touch",
+      "neutral"
+    ],
+    "searchQuery": "leather belt"
+  },
+  {
+    "id": "lumen-pleated-skirt",
+    "name": "Lumen Pleated Skirt",
+    "category": "Skirts",
+    "price": 17500,
+    "colors": [
+      "Ecru",
+      "Olive",
+      "Black"
+    ],
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "fabric": "Satin-back crepe",
+    "fit": "relaxed",
+    "care": "Dry clean recommended",
+    "description": "A floor-grazing pleated skirt in satin-back crepe that catches the light with every step. An elasticated waistband keeps it as comfortable as it is dramatic.",
+    "hero": "/catalog/lumen-pleated-skirt.jpg",
+    "gallery": [
+      "/catalog/lumen-pleated-skirt.jpg"
+    ],
+    "imagePrompt": "A floor-length ecru pleated skirt in satin-back crepe with fine accordion pleats that catch the light, flowing silhouette",
+    "sizeChart": [
+      {
+        "size": "XS",
+        "chest": 0,
+        "waist": 25,
+        "hip": 35
+      },
+      {
+        "size": "S",
+        "chest": 0,
+        "waist": 27,
+        "hip": 37
+      },
+      {
+        "size": "M",
+        "chest": 0,
+        "waist": 29,
+        "hip": 39
+      },
+      {
+        "size": "L",
+        "chest": 0,
+        "waist": 31,
+        "hip": 41
+      }
+    ],
+    "styleTags": [
+      "evening",
+      "fluid",
+      "statement",
+      "neutral"
+    ],
+    "searchQuery": "pleated skirt"
+  },
+  {
+    "id": "monteray-canvas-tote",
+    "name": "Monteray Canvas Tote",
+    "category": "Accessories",
+    "price": 11500,
+    "colors": [
+      "Natural",
+      "Espresso",
+      "Sage"
+    ],
+    "sizes": [
+      "One Size"
+    ],
+    "fabric": "Heavyweight organic canvas, leather trim",
+    "fit": "relaxed",
+    "care": "Spot clean",
+    "description": "An oversized tote in heavyweight canvas with vegetable-tanned leather handles, roomy enough for a laptop, a change of shoes, and the rest of your day.",
+    "hero": "/catalog/monteray-canvas-tote.jpg",
+    "gallery": [
+      "/catalog/monteray-canvas-tote.jpg"
+    ],
+    "imagePrompt": "An oversized natural-colored heavyweight canvas tote bag with vegetable-tanned leather handles and trim, structured but relaxed shape",
+    "sizeChart": [
+      {
+        "size": "One Size",
+        "chest": 0,
+        "waist": 0,
+        "hip": 0
+      }
+    ],
+    "styleTags": [
+      "accessory",
+      "everyday",
+      "earthy",
+      "practical"
+    ],
+    "searchQuery": "canvas tote bag"
+  }
+]
