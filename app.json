@@ -4,11 +4,12 @@
     "slug": "atelier-mobile",
     "scheme": "atelier",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.quasar.ateliermobile"
     },
     "android": {
       "package": "com.quasar.ateliermobile",
@@ -21,7 +22,8 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "output": "static"
     },
     "plugins": [
       "expo-router",
@@ -29,13 +31,21 @@
       "expo-web-browser",
       "expo-asset",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Atelier uses your photos to pick garments and customer photos for virtual try-on.",
+          "cameraPermission": "Atelier uses the camera to take customer and garment photos for virtual try-on."
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "router": {},

@@ -1,9 +1,12 @@
 import { supabase } from './supabaseClient'
-import type { Measurements, ColorAnalysisResult, SizeResult, VerdictResult } from './types'
+import type { Measurements, ColorAnalysisResult, SizeResult, VerdictResult, StyleReport } from './types'
 
 // Columns added by supabase/migrations/cloud-only-history.sql. If the migration
 // hasn't run yet, writes/reads of these degrade gracefully so nothing crashes.
-const EXTRA_HISTORY_COLS = ['size_result', 'verdict_result', 'garment_source', 'garment_name', 'retailer_product_url']
+const EXTRA_HISTORY_COLS = [
+  'size_result', 'verdict_result', 'garment_source', 'garment_name', 'retailer_product_url',
+  'garment_path', 'garment_brand', // b2c-app.sql
+]
 const isMissingCol = (msg?: string) =>
   !!msg && (EXTRA_HISTORY_COLS.some((c) => msg.includes(c)) || /column .* does not exist|schema cache/i.test(msg))
 // Raised when we upsert with onConflict:'user_id,product_id' but the unique index
@@ -26,7 +29,7 @@ export function isSupabaseConfigured(): boolean {
 // RFC-4122 v4 UUID. React Native's Hermes engine has no `crypto.randomUUID`, so
 // the old timestamp fallback produced non-UUID strings that Postgres rejected on
 // insert (`invalid input syntax for type uuid`) — silently losing every try-on.
-function uuidv4(): string {
+export function uuidv4(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0
     const v = c === 'x' ? r : (r & 0x3) | 0x8
@@ -34,7 +37,7 @@ function uuidv4(): string {
   })
 }
 
-function dataUriToBytes(dataUri: string): { bytes: Uint8Array; contentType: string } {
+export function dataUriToBytes(dataUri: string): { bytes: Uint8Array; contentType: string } {
   const commaIdx = dataUri.indexOf(',')
   const meta = dataUri.slice(0, commaIdx)
   const b64 = dataUri.slice(commaIdx + 1)
@@ -56,56 +59,76 @@ export async function getCurrentUserId(): Promise<string | null> {
   }
 }
 
-export async function fetchProfile(userId: string): Promise<{
+export interface CloudProfile {
+  name?: string
+  dateOfBirth?: string          // YYYY-MM-DD
   measurements?: Measurements
   colorAnalysis?: ColorAnalysisResult
+  styleReport?: StyleReport
   photoPath?: string
-} | null> {
+  notifyEmail?: boolean
+  notifyPush?: boolean
+  /** False when the b2c-app.sql columns don't exist yet (skip onboarding checks). */
+  hasAccountColumns: boolean
+}
+
+export async function fetchProfile(userId: string): Promise<CloudProfile | null> {
   if (!isSupabaseConfigured()) return null
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('measurements, color_analysis, photo_path')
-      .eq('id', userId)
-      .maybeSingle()
+    // select('*') so a database without the newer columns still returns a row.
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
     if (error || !data) return null
     const row = data as any
     return {
+      // The signup trigger stores the email as the name until the user sets one.
+      name: row.name && row.name !== row.email ? row.name : undefined,
+      dateOfBirth: row.date_of_birth ?? undefined,
       measurements: row.measurements ?? undefined,
       colorAnalysis: row.color_analysis ?? undefined,
+      styleReport: row.style_profile?.style && row.style_profile?.color ? row.style_profile : undefined,
       photoPath: row.photo_path ?? undefined,
+      notifyEmail: row.notify_email ?? true,
+      notifyPush: row.notify_push ?? true,
+      hasAccountColumns: 'date_of_birth' in row,
     }
   } catch {
     return null
   }
 }
 
-// Only sends the fields you provide — other columns are untouched on UPDATE.
+// Only writes the fields you provide — other columns are untouched. The profile
+// row is created by the signup trigger, so this updates it; an insert (with the
+// email as the required name) only happens for accounts that predate the trigger.
 export async function upsertProfile(
   userId: string,
   email: string,
   data: {
+    name?: string
+    dateOfBirth?: string | null
     measurements?: Measurements | null
     colorAnalysis?: ColorAnalysisResult | null
+    styleReport?: StyleReport | null
     photoPath?: string | null
+    notifyEmail?: boolean
+    notifyPush?: boolean
   },
 ): Promise<void> {
   if (!isSupabaseConfigured()) return
-  const payload: Record<string, unknown> = {
-    id: userId,
-    email,
-    name: email,
-    updated_at: new Date().toISOString(),
-  }
-  if ('measurements' in data) payload.measurements = data.measurements ?? null
-  if ('colorAnalysis' in data) payload.color_analysis = data.colorAnalysis ?? null
-  if ('photoPath' in data) payload.photo_path = data.photoPath ?? null
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (data.name !== undefined) patch.name = data.name
+  if ('dateOfBirth' in data) patch.date_of_birth = data.dateOfBirth ?? null
+  if ('measurements' in data) patch.measurements = data.measurements ?? null
+  if ('colorAnalysis' in data) patch.color_analysis = data.colorAnalysis ?? null
+  if ('styleReport' in data) patch.style_profile = data.styleReport ?? null
+  if ('photoPath' in data) patch.photo_path = data.photoPath ?? null
+  if (data.notifyEmail !== undefined) patch.notify_email = data.notifyEmail
+  if (data.notifyPush !== undefined) patch.notify_push = data.notifyPush
 
-  try {
-    await supabase.from('profiles').upsert(payload)
-  } catch (err) {
-    console.warn('[Atelier] Profile sync failed:', err)
-  }
+  const { data: updated, error } = await supabase.from('profiles').update(patch).eq('id', userId).select('id')
+  if (error) throw error
+  if (updated && updated.length > 0) return
+  const { error: insErr } = await supabase.from('profiles').insert({ id: userId, email, name: data.name || email, ...patch })
+  if (insErr) throw insErr
 }
 
 export async function uploadUserPhoto(userId: string, dataUri: string): Promise<string | null> {
@@ -134,6 +157,8 @@ export interface CloudTryOn {
   demo: boolean
   retailerProductUrl?: string
   garmentSource?: string
+  garmentUrl?: string           // signed URL of the garment image (b2c-app.sql)
+  garmentBrand?: string
   sizeResult?: SizeResult | null
   verdictResult?: VerdictResult | null
   createdAt: string
@@ -205,6 +230,8 @@ export async function saveTryOnToCloud(
     productName: string
     garmentColor?: string
     imageDataUri: string
+    garmentDataUri?: string     // the garment picture, shown next to the try-on in History
+    garmentBrand?: string
     demo?: boolean
     retailerProductUrl?: string
     garmentSource?: string
@@ -226,6 +253,16 @@ export async function saveTryOnToCloud(
   })
   if (uploadErr) throw uploadErr
 
+  // The garment image is best-effort: History falls back to the try-on alone.
+  let garmentPath: string | null = null
+  if (payload.garmentDataUri?.startsWith('data:')) {
+    const gp = `${userId}/${fileId}-garment.jpg`
+    const g = dataUriToBytes(payload.garmentDataUri)
+    const { error: gErr } = await supabase.storage.from(TRYON_BUCKET).upload(gp, g.bytes, { upsert: true, contentType: g.contentType })
+    if (gErr) console.warn('[Atelier] garment image upload failed:', gErr.message)
+    else garmentPath = gp
+  }
+
   const patch: Record<string, unknown> = {
     product_name: payload.productName,
     garment_color: payload.garmentColor ?? null,
@@ -234,7 +271,9 @@ export async function saveTryOnToCloud(
     garment_name: payload.productName,
     garment_source: payload.garmentSource ?? (payload.retailerProductUrl || 'upload'),
     retailer_product_url: payload.retailerProductUrl ?? null,
+    garment_brand: payload.garmentBrand ?? null,
   }
+  if (garmentPath) patch.garment_path = garmentPath
   // Only carry size/verdict when actually present — NEVER overwrite an existing
   // size/verdict row with a stale null captured in this action's closure.
   if (payload.sizeResult != null) patch.size_result = payload.sizeResult
@@ -262,6 +301,8 @@ export async function saveTryOnToCloud(
     demo: payload.demo ?? false,
     retailerProductUrl: payload.retailerProductUrl,
     garmentSource: payload.garmentSource,
+    garmentUrl: payload.garmentDataUri,
+    garmentBrand: payload.garmentBrand,
     sizeResult: saved?.size_result ?? payload.sizeResult ?? null,
     verdictResult: saved?.verdict_result ?? payload.verdictResult ?? null,
     createdAt: new Date().toISOString(),
@@ -308,7 +349,7 @@ export async function saveHistoryResults(
 export async function listTryOnsFromCloud(userId: string): Promise<CloudTryOn[]> {
   if (!isSupabaseConfigured()) return []
   const baseSelect = 'id, product_id, product_name, garment_color, storage_path, demo, created_at'
-  const fullSelect = `${baseSelect}, retailer_product_url, garment_source, size_result, verdict_result`
+  const fullSelect = `${baseSelect}, retailer_product_url, garment_source, size_result, verdict_result, garment_path, garment_brand`
   try {
     let { data, error }: { data: any; error: any } = await supabase
       .from('try_ons')
@@ -338,7 +379,10 @@ export async function listTryOnsFromCloud(userId: string): Promise<CloudTryOn[]>
       data.map(async (row: any) => {
         // Rows can now exist without a try-on image (size/verdict only), so a
         // missing image is not a reason to drop the row.
-        const imageUrl = row.storage_path ? (await signedTryOnUrl(row.storage_path)) : null
+        const [imageUrl, garmentUrl] = await Promise.all([
+          row.storage_path ? signedTryOnUrl(row.storage_path) : null,
+          row.garment_path ? signedTryOnUrl(row.garment_path) : null,
+        ])
         return {
           id: row.id,
           productId: row.product_id,
@@ -348,6 +392,8 @@ export async function listTryOnsFromCloud(userId: string): Promise<CloudTryOn[]>
           demo: row.demo ?? false,
           retailerProductUrl: row.retailer_product_url ?? undefined,
           garmentSource: row.garment_source ?? undefined,
+          garmentUrl: garmentUrl ?? undefined,
+          garmentBrand: row.garment_brand ?? undefined,
           sizeResult: row.size_result ?? null,
           verdictResult: row.verdict_result ?? null,
           createdAt: row.created_at,
@@ -361,15 +407,21 @@ export async function listTryOnsFromCloud(userId: string): Promise<CloudTryOn[]>
   }
 }
 
-// Best-effort delete of a cloud try-on (Storage object + DB row).
+// Delete a cloud try-on: its images in Storage, then the row. Throws on failure
+// so History can keep the item and say so.
 export async function deleteTryOnFromCloud(userId: string, id: string): Promise<void> {
   if (!isSupabaseConfigured()) return
-  try {
-    await supabase.storage.from(TRYON_BUCKET).remove([`${userId}/${id}.jpg`])
-    await supabase.from('try_ons').delete().eq('id', id)
-  } catch (err) {
-    console.warn('[Atelier] Try-on cloud delete failed:', err)
+  let { data: row, error }: { data: any; error: any } = await supabase
+    .from('try_ons').select('storage_path, garment_path').eq('id', id).eq('user_id', userId).maybeSingle()
+  if (error && isMissingCol(error.message)) {
+    ;({ data: row, error } = await supabase
+      .from('try_ons').select('storage_path').eq('id', id).eq('user_id', userId).maybeSingle())
   }
+  if (error) throw error
+  const paths = [row?.storage_path, row?.garment_path].filter(Boolean) as string[]
+  if (paths.length) await supabase.storage.from(TRYON_BUCKET).remove(paths)
+  const { error: delErr } = await supabase.from('try_ons').delete().eq('id', id).eq('user_id', userId)
+  if (delErr) throw delErr
 }
 
 export async function downloadUserPhoto(photoPath: string): Promise<string | null> {

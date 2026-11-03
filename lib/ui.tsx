@@ -56,6 +56,17 @@ const ICON = {
   refresh:  'refresh',
   camera:   'tray-arrow-up',
   star:     'star-four-points',
+
+  // B2B store app
+  company:     'storefront-outline',
+  newCustomer: 'account-plus-outline',
+  gallery:     'image-multiple-outline',
+  takePhoto:   'camera-outline',
+  search:      'magnify',
+  share:       'share-variant-outline',
+  clock:       'clock-outline',
+  chevron:     'chevron-right',
+  link:        'link-variant',
 } as const
 
 export type IconName = keyof typeof ICON
@@ -146,3 +157,23 @@ const b = StyleSheet.create({
     shadowOpacity: 0.28, shadowRadius: 16, elevation: 6,
   },
 })
+
+// ─── Bottom tab bar ───────────────────────────────────────────────────────────
+// Shared by the B2C and store apps: the same bottom bar on phones and iPads,
+// taller on iPad, always clear of the home indicator (safe-area bottom inset).
+export function bottomTabOptions(wide: boolean, insetBottom: number) {
+  const pad = wide ? 10 : 8
+  return {
+    headerShown: false,
+    tabBarPosition: 'bottom' as const,
+    tabBarVariant: 'uikit' as const,
+    tabBarLabelPosition: 'below-icon' as const,
+    tabBarActiveTintColor: Colors.secondary,
+    tabBarInactiveTintColor: Colors.primary,
+    tabBarStyle: {
+      backgroundColor: Colors.bgCard, borderTopWidth: 0,
+      height: (wide ? 76 : 68) + insetBottom, paddingTop: 6, paddingBottom: pad + insetBottom,
+      shadowColor: '#423D3A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.10, shadowRadius: 20, elevation: 20,
+    },
+  }
+}

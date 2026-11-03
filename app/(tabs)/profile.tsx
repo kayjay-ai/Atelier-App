@@ -1,529 +1,544 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  SafeAreaView, ScrollView, Image, Alert, Platform, Animated, ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Switch,
+  SafeAreaView, ScrollView, Image, ActivityIndicator,
 } from 'react-native'
-import * as ImagePicker from 'expo-image-picker'
-import * as FileSystem from 'expo-file-system/legacy'
 import { useRouter } from 'expo-router'
-import {
-  useProfileStore, useMembershipStore, useGarmentStore, useCreditsStore,
-} from '../../lib/store'
+import { useProfileStore, useMembershipStore, useCreditsStore } from '../../lib/store'
 import { supabase } from '../../lib/supabaseClient'
-import {
-  fetchProfile, upsertProfile, uploadUserPhoto, downloadUserPhoto,
-} from '../../lib/supabaseStorage'
+import { upsertProfile, uploadUserPhoto } from '../../lib/supabaseStorage'
+import { postEvent, deleteAccount } from '../../lib/api'
+import { pickImageDataUri } from '../../lib/imageInput'
+import { FREE_CREDITS } from '../../lib/pricing'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon } from '../../lib/ui'
-import type { Measurements } from '../../lib/types'
+import { Icon, PillButton } from '../../lib/ui'
+import { FIT_LABELS, type Measurements } from '../../lib/types'
+import { DateOfBirthField, parseDob, dobFromIso, type DobValue } from '../../components/DateOfBirthField'
+
+// Profile tab (spec §3.2): Your photo · Your size · Fit preference · Account,
+// with a completeness bar. Guests can fill photo / size / fit for this session.
+
+type Session = { id: string; email: string } | null
+
+const FRAMING_TIPS = [
+  'Head to feet in the frame',
+  'Arms slightly away from your body',
+  'Plain background, good light',
+  'Fitted clothes show your shape best',
+]
 
 export default function ProfileScreen() {
-  const profile    = useProfileStore()
-  const membership = useMembershipStore()
-  const garment    = useGarmentStore()
-  const credits    = useCreditsStore()
-  const router     = useRouter()
-  const [session, setSession] = useState<any>(null)
-  const [sessionChecked, setSessionChecked] = useState(false)
+  const profile = useProfileStore()
+  const router = useRouter()
+  const [session, setSession] = useState<Session>(null)
+  const [checked, setChecked] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setSessionChecked(true)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      setSession(s)
-      if (event === 'SIGNED_OUT') {
-        // Explicit sign-out — clear profile data and show guest view
-        profile.reset()
-        profile.setOwner(null)
-      }
-    })
+    const apply = (u: any) => setSession(u ? { id: u.id, email: u.email ?? '' } : null)
+    supabase.auth.getSession().then(({ data }) => { apply(data.session?.user); setChecked(true) })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => apply(s?.user))
     return () => subscription.unsubscribe()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
-    const userId = session?.user?.id
-    if (!userId) {
-      profile.reset()
-      profile.setOwner(null)
-      garment.clear()
-      membership.setMembership(null)
-      return
-    }
-    if (useProfileStore.getState().ownerId !== userId) {
-      profile.reset()
-      garment.clear()
-      profile.setOwner(userId)
-    }
-    membership.refresh().then((m) => {
-      credits.syncFromMembership(m)
-    })
-    async function loadFromCloud() {
-      const remote = await fetchProfile(userId)
-      if (!remote) return
-      if (remote.measurements) profile.setMeasurements(remote.measurements)
-      if (remote.colorAnalysis) profile.setColorAnalysis(remote.colorAnalysis)
-      if (remote.photoPath && !useProfileStore.getState().photoUri) {
-        const photoUri = await downloadUserPhoto(remote.photoPath)
-        if (photoUri) profile.setPhotoUri(photoUri)
-      }
-    }
-    loadFromCloud()
-  }, [session?.user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (session) profile.hydrate(session.id).catch(() => {})
+  }, [session?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Waiting for session check
-  if (!sessionChecked) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.loadingWrap}><ActivityIndicator color={Colors.primary} /></View>
-      </SafeAreaView>
-    )
+  if (!checked || (session && (!profile.loaded || profile.ownerId !== session.id))) {
+    return <SafeAreaView style={s.safe}><View style={s.center}><ActivityIndicator color={Colors.primary} /></View></SafeAreaView>
   }
 
-  // Session exists but profile store not yet rehydrated — brief flicker
-  if (session && profile.ownerId !== session?.user?.id) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.loadingWrap}><Text style={s.hint}>Loading your profile…</Text></View>
-      </SafeAreaView>
-    )
-  }
-
-  // Guest mode — no session, show local-only profile
-  if (!session) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <ScrollView contentContainerStyle={s.scroll}>
-          <View style={s.guestBanner}>
-            <Text style={s.guestTitle}>Your profile</Text>
-            <Text style={s.guestHint}>
-              Add your photo and measurements below — they're used for virtual try-on and size recommendations.
-              Sign in to save them to the cloud and access them on any device.
-            </Text>
-            <TouchableOpacity style={s.signInPromptBtn} onPress={() => router.push('/auth')}>
-              <Text style={s.signInPromptText}>Sign in or create account</Text>
-            </TouchableOpacity>
-          </View>
-          <PhotoSection userId={null} userEmail="" />
-          <MeasurementsSection userId={null} userEmail="" />
-        </ScrollView>
-      </SafeAreaView>
-    )
-  }
-
-  const userId: string = session.user.id
-  const userEmail: string = session.user.email ?? ''
+  const done = [!!profile.photoUri, !!profile.measurements, !!profile.measurements?.fitChosen]
+  const doneCount = done.filter(Boolean).length
 
   return (
     <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+        <View style={s.column}>
+          {!session && (
+            <View style={s.card}>
+              <Text style={s.cardTitle}>Your profile</Text>
+              <Text style={s.muted}>
+                Add your photo, size and fit below — they're used for try-on and size advice. Sign in to keep them on every device.
+              </Text>
+              <PillButton label="Sign in or create account" onPress={() => router.push('/auth')} />
+            </View>
+          )}
 
-        <CreditsBar />
-        <MembershipSection />
-        <PhotoSection key={`photo-${userId}`} userId={userId} userEmail={userEmail} />
-        <MeasurementsSection key={`meas-${userId}`} userId={userId} userEmail={userEmail} />
+          <View style={s.progressCard}>
+            <View style={s.rowBetween}>
+              <Text style={s.cardTitle}>Profile {doneCount} of 3 done</Text>
+              {doneCount === 3 && <Icon name="check" size={20} color={Colors.success} />}
+            </View>
+            <View style={s.bar}><View style={[s.barFill, { width: `${(doneCount / 3) * 100}%` }]} /></View>
+            {doneCount < 3 && (
+              <Text style={s.muted}>
+                {!done[0] ? 'Add your photo to try things on.' : !done[1] ? 'Add your size to get size advice.' : 'Pick your fit preference.'}
+              </Text>
+            )}
+          </View>
 
-        <TouchableOpacity style={s.signOutBtn} onPress={() => supabase.auth.signOut()}>
-          <Text style={s.signOutText}>Sign out</Text>
-        </TouchableOpacity>
-
+          <PhotoSection session={session} />
+          <SizeSection session={session} />
+          <FitSection session={session} />
+          {session && <AccountSection session={session} />}
+        </View>
       </ScrollView>
     </SafeAreaView>
   )
 }
 
-function CreditsBar() {
-  const credits = useCreditsStore()
-  const { membership } = useMembershipStore()
-  const isPremium = membership?.isPremium || membership?.plan === 'premium'
-  const balance = credits.remaining()
-
-  return (
-    <View style={s.creditsBox}>
-      <View style={s.creditsLabelRow}>
-        <Text style={s.creditsLabel}>CREDITS</Text>
-        <Text style={s.creditsCount}>{isPremium ? 'Unlimited' : `${balance} left`}</Text>
-      </View>
-      <Text style={s.creditsHint}>
-        {isPremium ? 'Premium — unlimited generations.' : '1 credit = 1 generation. Credits stack and don’t expire.'}
-      </Text>
-    </View>
-  )
-}
-
-function MembershipSection() {
-  const router = useRouter()
-  const credits = useCreditsStore()
-  const { membership } = useMembershipStore()
-  const isPremium = membership?.isPremium || membership?.plan === 'premium'
-  const balance = credits.remaining()
-
-  if (isPremium) {
-    return (
-      <View style={s.section}>
-        <Text style={s.sectionLabel}>MEMBERSHIP</Text>
-        <View style={[s.memberCard, s.memberCardPremium]}>
-          <View style={s.memberRow}>
-            <Text style={[s.memberPlan, s.memberPlanPremium]}>Atelier Premium</Text>
-            <View style={s.premiumBadge}><Text style={s.premiumBadgeText}>PREMIUM</Text></View>
-          </View>
-          <Text style={[s.memberHint, { color: 'rgba(250,248,245,0.6)' }]}>
-            Unlimited generations and watermark-free downloads.
-          </Text>
-        </View>
-      </View>
-    )
-  }
-
-  return (
-    <View style={s.section}>
-      <Text style={s.sectionLabel}>CREDITS</Text>
-      <View style={s.memberCard}>
-        <View style={s.memberRow}>
-          <Text style={s.memberPlan}>{balance} credit{balance === 1 ? '' : 's'} remaining</Text>
-        </View>
-        <Text style={s.memberHint}>Buy more anytime — ₹15 per generation, or a credit pack.</Text>
-        <TouchableOpacity style={s.upgradeBtn} onPress={() => router.push('/premium')}>
-          <Icon name="star" size={18} color={Colors.textOnDark} />
-          <Text style={s.upgradeBtnText}>Buy credits</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  )
-}
-
-function PhotoSection({ userId, userEmail }: { userId: string | null; userEmail: string }) {
+// ─── Your photo ───────────────────────────────────────────────────────────────
+function PhotoSection({ session }: { session: Session }) {
   const profile = useProfileStore()
-  const [photoError, setPhotoError] = useState<string | null>(null)
-  const [photoSaving, setPhotoSaving] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  async function pickPhoto() {
-    if (Platform.OS !== 'web') {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
-      if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo library access.'); return }
-    }
-    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.85 })
-    if (picked.canceled || !picked.assets[0]) return
-    const uri = picked.assets[0].uri
-
-    let dataUri: string
-    if (Platform.OS === 'web') {
-      const res = await fetch(uri)
-      const blob = await res.blob()
-      dataUri = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.readAsDataURL(blob)
-      })
-    } else {
-      const raw = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
-      dataUri = `data:image/jpeg;base64,${raw}`
-    }
-    profile.setPhotoUri(dataUri)
-    if (!userId) return // guest — no cloud account to save to
-
-    // Cloud-only: upload to Storage, save its path on the profile. Surface failures.
-    setPhotoSaving(true)
-    setPhotoError(null)
+  async function choose(source: 'camera' | 'library') {
+    setError(null)
+    let uri: string | null = null
     try {
-      const photoPath = await uploadUserPhoto(userId, dataUri)
-      if (!photoPath) throw new Error('Storage upload was rejected (check the Storage RLS policy for user-photos).')
-      await upsertProfile(userId, userEmail, { photoPath })
+      uri = await pickImageDataUri(source, { quality: 0.85 })
     } catch (e: any) {
-      console.error('[Atelier] Profile photo save failed:', e)
-      setPhotoError("Couldn't save your photo to the cloud. Tap the photo to try again.")
-    } finally {
-      setPhotoSaving(false)
-    }
-  }
-
-  return (
-    <View style={s.section}>
-      <Text style={s.sectionLabel}>YOUR PHOTO</Text>
-      <Text style={s.hint}>Used for virtual try-on and colour analysis.</Text>
-      <TouchableOpacity style={s.photoBox} onPress={pickPhoto}>
-        {profile.photoUri ? (
-          <Image source={{ uri: profile.photoUri }} style={s.photoImg} resizeMode="cover" />
-        ) : (
-          <View style={s.photoPlaceholder}>
-            <Icon name="upload" size={28} color={Colors.textMuted} />
-            <Text style={s.photoHint}>Tap to add</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-      {photoSaving && <Text style={[s.hint, { marginTop: Space.sm }]}>Saving to cloud…</Text>}
-      {photoError && (
-        <View style={s.photoErrorBox}>
-          <Text style={s.photoErrorText}>{photoError}</Text>
-        </View>
-      )}
-    </View>
-  )
-}
-
-function MeasurementsSection({ userId, userEmail }: { userId: string | null; userEmail: string }) {
-  const profile  = useProfileStore()
-  const router   = useRouter()
-  const saved    = profile.measurements
-  const [editing, setEditing] = useState(!saved)
-  const [showSuccess, setShowSuccess] = useState(false)
-  const successScale = useRef(new Animated.Value(0)).current
-  const successOpacity = useRef(new Animated.Value(0)).current
-
-  const [form, setForm] = useState<Record<string, string>>({
-    heightCm: String(saved?.heightCm ?? ''),
-    chestIn:  String(saved?.chestIn  ?? ''),
-    waistIn:  String(saved?.waistIn  ?? ''),
-    hipIn:    String(saved?.hipIn    ?? ''),
-    fitPreference: saved?.fitPreference ?? 'true-to-size',
-  })
-
-  // Measurements load from the cloud asynchronously after this section mounts.
-  // Re-sync the form + drop out of edit mode once they arrive, otherwise the
-  // user is left looking at an empty edit form instead of their saved values.
-  useEffect(() => {
-    if (!saved) return
-    setForm({
-      heightCm: String(saved.heightCm ?? ''),
-      chestIn:  String(saved.chestIn  ?? ''),
-      waistIn:  String(saved.waistIn  ?? ''),
-      hipIn:    String(saved.hipIn    ?? ''),
-      fitPreference: saved.fitPreference ?? 'true-to-size',
-    })
-    setEditing(false)
-  }, [saved])
-
-  const fields: { key: string; label: string; unit: string }[] = [
-    { key: 'heightCm', label: 'Height', unit: 'cm' },
-    { key: 'chestIn',  label: 'Chest',  unit: 'in' },
-    { key: 'waistIn',  label: 'Waist',  unit: 'in' },
-    { key: 'hipIn',    label: 'Hip',    unit: 'in' },
-  ]
-
-  function save() {
-    const m: Measurements = {
-      heightCm: parseFloat(form.heightCm),
-      chestIn:  parseFloat(form.chestIn),
-      waistIn:  parseFloat(form.waistIn),
-      hipIn:    parseFloat(form.hipIn),
-      fitPreference: form.fitPreference as Measurements['fitPreference'],
-    }
-    const nums = [m.heightCm, m.chestIn, m.waistIn, m.hipIn]
-    if (nums.some((v) => isNaN(v))) {
-      Alert.alert('Incomplete', 'Fill in all measurements before saving.')
+      setError(e?.message ?? 'Could not open the camera.')
       return
     }
-    profile.setMeasurements(m)
-    setEditing(false)
-    if (userId) {
-      upsertProfile(userId, userEmail, { measurements: m }).catch(() => {})
+    if (!uri) return
+    profile.setPhotoUri(uri)
+    if (!session) return // guest — kept for this session only
+    setSaving(true)
+    try {
+      const path = await uploadUserPhoto(session.id, uri)
+      if (!path) throw new Error('upload rejected')
+      await upsertProfile(session.id, session.email, { photoPath: path })
+    } catch (e) {
+      console.error('[Atelier] profile photo save failed:', e)
+      setError("Couldn't save your photo — try again.")
+    } finally {
+      setSaving(false)
     }
-
-    // Longer, prominent success animation at the top, then redirect home
-    setShowSuccess(true)
-    Animated.parallel([
-      Animated.spring(successScale, { toValue: 1, useNativeDriver: false, friction: 5, tension: 60 }),
-      Animated.timing(successOpacity, { toValue: 1, duration: 350, useNativeDriver: false }),
-    ]).start()
-    setTimeout(() => {
-      Animated.timing(successOpacity, { toValue: 0, duration: 500, useNativeDriver: false }).start(() => {
-        setShowSuccess(false)
-        successScale.setValue(0)
-        router.replace('/(tabs)')
-      })
-    }, 1800)
   }
 
   return (
-    <View style={s.section}>
-      <View style={s.sectionRow}>
-        <Text style={s.sectionLabel}>MEASUREMENTS</Text>
-        {!editing && (
-          <TouchableOpacity onPress={() => setEditing(true)}>
-            <Text style={s.editLink}>Edit</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {editing ? (
-        <>
-          {fields.map(({ key, label, unit }) => (
-            <View key={key} style={s.fieldRow}>
-              <Text style={s.fieldLabel}>{label}</Text>
-              <View style={s.fieldInputWrap}>
-                <TextInput
-                  style={s.input}
-                  value={form[key]}
-                  onChangeText={(v) => setForm({ ...form, [key]: v })}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor={Colors.textFaint}
-                />
-                <Text style={s.unit}>{unit}</Text>
-              </View>
+    <View style={s.card}>
+      <Text style={s.cardTitle}>Your photo</Text>
+      <Text style={s.muted}>Used for every try-on and for your Style report.</Text>
+      <View style={s.photoRow}>
+        <View style={s.photoBox}>
+          {profile.photoUri
+            ? <Image source={{ uri: profile.photoUri }} style={s.photoImg} resizeMode="cover" />
+            : <View style={s.photoEmpty}><Icon name="profile" size={34} color={Colors.textFaint} /></View>}
+          {saving && <View style={s.photoSaving}><ActivityIndicator color={Colors.textOnDark} /></View>}
+        </View>
+        <View style={s.tips}>
+          <Text style={s.label}>FOR THE BEST RESULT</Text>
+          {FRAMING_TIPS.map((tip) => (
+            <View key={tip} style={s.tipRow}>
+              <Icon name="check" size={14} color={Colors.primary} />
+              <Text style={s.tipText}>{tip}</Text>
             </View>
           ))}
+        </View>
+      </View>
+      <View style={s.btnRow}>
+        <PillButton label={profile.photoUri ? 'Retake' : 'Camera'} icon="takePhoto" onPress={() => choose('camera')} disabled={saving} style={s.flexBtn} />
+        <PillButton label="Gallery" icon="gallery" variant="outline" onPress={() => choose('library')} disabled={saving} style={s.flexBtn} />
+      </View>
+      {error && <Text style={s.errorText}>{error}</Text>}
+    </View>
+  )
+}
 
-          <Text style={[s.fieldLabel, { marginTop: Space.md }]}>Fit preference</Text>
-          <View style={s.fitRow}>
-            {(['snug', 'true-to-size', 'relaxed'] as Measurements['fitPreference'][]).map((f) => (
-              <TouchableOpacity
-                key={f}
-                style={[s.fitChip, form.fitPreference === f && s.fitChipActive]}
-                onPress={() => setForm({ ...form, fitPreference: f })}
-              >
-                <Text style={[s.fitChipText, form.fitPreference === f && s.fitChipTextActive]}>{f}</Text>
-              </TouchableOpacity>
+// ─── Your size ────────────────────────────────────────────────────────────────
+const SIZE_FIELDS: { key: 'heightCm' | 'weightKg' | 'chestIn' | 'waistIn' | 'hipIn'; label: string; unit: string }[] = [
+  { key: 'heightCm', label: 'Height', unit: 'cm' },
+  { key: 'weightKg', label: 'Weight', unit: 'kg' },
+  { key: 'chestIn',  label: 'Chest / bust', unit: 'in' },
+  { key: 'waistIn',  label: 'Waist', unit: 'in' },
+  { key: 'hipIn',    label: 'Hip', unit: 'in' },
+]
+
+function formFrom(m: Measurements | null) {
+  const out: Record<string, string> = { usualSize: m?.usualSize ?? '' }
+  for (const f of SIZE_FIELDS) out[f.key] = m?.[f.key] != null ? String(m[f.key]) : ''
+  return out
+}
+
+async function saveMeasurements(session: Session, m: Measurements) {
+  useProfileStore.getState().setMeasurements(m)
+  if (session) await upsertProfile(session.id, session.email, { measurements: m })
+}
+
+function SizeSection({ session }: { session: Session }) {
+  const profile = useProfileStore()
+  const saved = profile.measurements
+  const [editing, setEditing] = useState(!saved)
+  const [form, setForm] = useState(formFrom(saved))
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => { setForm(formFrom(saved)); if (saved) setEditing(false) }, [saved])
+
+  async function save() {
+    setMsg(null)
+    const num = (k: string) => Number(form[k].replace(',', '.'))
+    const missing = SIZE_FIELDS.filter((f) => !form[f.key] || !(num(f.key) > 0))
+    if (missing.length) { setMsg({ ok: false, text: `Fill in ${missing.map((f) => f.label.toLowerCase()).join(', ')}.` }); return }
+    const m: Measurements = {
+      heightCm: num('heightCm'), weightKg: num('weightKg'), chestIn: num('chestIn'),
+      waistIn: num('waistIn'), hipIn: num('hipIn'),
+      usualSize: form.usualSize.trim() || undefined,
+      fitPreference: saved?.fitPreference ?? 'true-to-size',
+      fitChosen: saved?.fitChosen ?? false,
+    }
+    setBusy(true)
+    try {
+      await saveMeasurements(session, m)
+      if (session) postEvent('profile_completed', { metadata: { measurements: true, photo: !!profile.photoUri } })
+      setEditing(false)
+      setMsg({ ok: true, text: 'Saved.' })
+    } catch (e: any) {
+      setMsg({ ok: false, text: `Couldn't save — ${e?.message ?? 'try again'}.` })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <View style={s.card}>
+      <View style={s.rowBetween}>
+        <Text style={s.cardTitle}>Your size</Text>
+        {!editing && saved && (
+          <TouchableOpacity onPress={() => { setEditing(true); setMsg(null) }}><Text style={s.link}>Edit</Text></TouchableOpacity>
+        )}
+      </View>
+      {editing ? (
+        <>
+          <View style={s.grid}>
+            {SIZE_FIELDS.map(({ key, label, unit }) => (
+              <View key={key} style={s.field}>
+                <Text style={s.label}>{label.toUpperCase()}</Text>
+                <View style={s.inputWrap}>
+                  <TextInput
+                    style={s.input} value={form[key]} onChangeText={(v) => setForm({ ...form, [key]: v })}
+                    keyboardType="decimal-pad" placeholder="0" placeholderTextColor={Colors.textFaint}
+                  />
+                  <Text style={s.unit}>{unit}</Text>
+                </View>
+              </View>
             ))}
+            <View style={s.field}>
+              <Text style={s.label}>USUAL SIZE</Text>
+              <TextInput
+                style={[s.input, s.inputText]} value={form.usualSize} onChangeText={(v) => setForm({ ...form, usualSize: v })}
+                placeholder="e.g. M / 32" placeholderTextColor={Colors.textFaint} autoCapitalize="characters"
+              />
+            </View>
           </View>
-
-          <View style={s.saveBtnRow}>
-            <TouchableOpacity style={s.saveBtn} onPress={save}>
-              <Text style={s.saveBtnText}>Save</Text>
-            </TouchableOpacity>
+          <View style={s.btnRow}>
+            {saved && <PillButton label="Cancel" variant="outline" onPress={() => { setEditing(false); setForm(formFrom(saved)); setMsg(null) }} style={s.flexBtn} />}
+            <PillButton label="Save" onPress={save} loading={busy} style={s.flexBtn} />
           </View>
         </>
       ) : saved ? (
         <View style={s.savedGrid}>
-          {fields.map(({ key, label, unit }) => (
+          {SIZE_FIELDS.map(({ key, label, unit }) => (
             <View key={key} style={s.savedItem}>
-              <Text style={s.savedValue}>{saved[key as keyof Measurements]}{unit}</Text>
+              <Text style={s.savedValue}>{saved[key] != null ? `${saved[key]} ${unit}` : '—'}</Text>
               <Text style={s.savedLabel}>{label}</Text>
             </View>
           ))}
           <View style={s.savedItem}>
-            <Text style={s.savedValue}>{saved.fitPreference}</Text>
-            <Text style={s.savedLabel}>Fit</Text>
+            <Text style={s.savedValue}>{saved.usualSize || '—'}</Text>
+            <Text style={s.savedLabel}>Usual size</Text>
+          </View>
+        </View>
+      ) : null}
+      {msg && <Text style={msg.ok ? s.okText : s.errorText}>{msg.text}</Text>}
+    </View>
+  )
+}
+
+// ─── Fit preference ───────────────────────────────────────────────────────────
+function FitSection({ session }: { session: Session }) {
+  const profile = useProfileStore()
+  const saved = profile.measurements
+  const [choice, setChoice] = useState<Measurements['fitPreference'] | null>(saved?.fitChosen ? saved.fitPreference : null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => { if (saved?.fitChosen) setChoice(saved.fitPreference) }, [saved])
+
+  async function save() {
+    if (!choice || !saved) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      await saveMeasurements(session, { ...saved, fitPreference: choice, fitChosen: true })
+      setMsg({ ok: true, text: 'Saved.' })
+    } catch (e: any) {
+      setMsg({ ok: false, text: `Couldn't save — ${e?.message ?? 'try again'}.` })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const unchanged = !!saved?.fitChosen && saved.fitPreference === choice
+  return (
+    <View style={s.card}>
+      <Text style={s.cardTitle}>Fit preference</Text>
+      <Text style={s.muted}>How you like clothes to sit — used for every size recommendation.</Text>
+      <View style={s.chips}>
+        {(['snug', 'true-to-size', 'relaxed'] as const).map((f) => (
+          <TouchableOpacity key={f} style={[s.chip, choice === f && s.chipOn]} onPress={() => { setChoice(f); setMsg(null) }}>
+            <Text style={[s.chipText, choice === f && s.chipTextOn]}>{FIT_LABELS[f]}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {!saved
+        ? <Text style={s.muted}>Save your size first, then your fit.</Text>
+        : <PillButton label={unchanged ? 'Saved' : 'Save'} onPress={save} loading={busy} disabled={!choice || unchanged} />}
+      {msg && !msg.ok && <Text style={s.errorText}>{msg.text}</Text>}
+    </View>
+  )
+}
+
+// ─── Account ──────────────────────────────────────────────────────────────────
+function AccountSection({ session }: { session: NonNullable<Session> }) {
+  const profile = useProfileStore()
+  const router = useRouter()
+  const balance = useCreditsStore((st) => st.balance)
+  const membership = useMembershipStore((st) => st.membership)
+  const premium = !!membership?.isPremium || membership?.plan === 'premium'
+
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(profile.name ?? '')
+  const [dob, setDob] = useState<DobValue>(dobFromIso(profile.dateOfBirth))
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function saveDetails() {
+    setMsg(null)
+    if (name.trim().length < 2) { setMsg({ ok: false, text: 'Enter your name.' }); return }
+    const parsed = parseDob(dob)
+    if ('error' in parsed) { setMsg({ ok: false, text: parsed.error }); return }
+    setBusy(true)
+    try {
+      await upsertProfile(session.id, session.email, { name: name.trim(), dateOfBirth: parsed.iso })
+      profile.setAccount({ name: name.trim(), dateOfBirth: parsed.iso })
+      setEditing(false)
+    } catch (e: any) {
+      setMsg({ ok: false, text: `Couldn't save — ${e?.message ?? 'try again'}.` })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggle(key: 'notifyEmail' | 'notifyPush', value: boolean) {
+    profile.setAccount({ [key]: value })
+    try {
+      await upsertProfile(session.id, session.email, { [key]: value })
+    } catch {
+      profile.setAccount({ [key]: !value })
+      setMsg({ ok: false, text: "Couldn't update notification settings." })
+    }
+  }
+
+  async function removeAccount() {
+    setDeleting(true)
+    setMsg(null)
+    try {
+      await deleteAccount()
+      await supabase.auth.signOut()
+      router.replace('/auth')
+    } catch (e: any) {
+      setMsg({ ok: false, text: e?.message ?? 'Could not delete your account.' })
+      setDeleting(false)
+    }
+  }
+
+  const dobLabel = profile.dateOfBirth
+    ? new Date(`${profile.dateOfBirth}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    : 'Not set'
+  const planLabel = premium ? 'Premium — unlimited' : membership?.plan ? 'Credit plan' : 'Free starter credits'
+
+  return (
+    <View style={s.card}>
+      <View style={s.rowBetween}>
+        <Text style={s.cardTitle}>Account</Text>
+        {!editing && <TouchableOpacity onPress={() => { setEditing(true); setName(profile.name ?? ''); setDob(dobFromIso(profile.dateOfBirth)) }}><Text style={s.link}>Edit</Text></TouchableOpacity>}
+      </View>
+
+      {editing ? (
+        <>
+          <Text style={s.label}>NAME</Text>
+          <TextInput style={[s.input, s.inputText]} value={name} onChangeText={setName} autoCapitalize="words" placeholderTextColor={Colors.textFaint} />
+          <Text style={[s.label, { marginTop: Space.sm }]}>DATE OF BIRTH</Text>
+          <DateOfBirthField value={dob} onChange={setDob} />
+          <View style={s.btnRow}>
+            <PillButton label="Cancel" variant="outline" onPress={() => { setEditing(false); setMsg(null) }} style={s.flexBtn} />
+            <PillButton label="Save" onPress={saveDetails} loading={busy} style={s.flexBtn} />
+          </View>
+        </>
+      ) : (
+        <View style={s.infoList}>
+          <InfoRow label="Name" value={profile.name ?? 'Not set'} />
+          <InfoRow label="Email" value={session.email} />
+          <InfoRow label="Date of birth" value={dobLabel} />
+        </View>
+      )}
+
+      <View style={s.divider} />
+      <View style={s.rowBetween}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.label}>PLAN & CREDITS</Text>
+          <Text style={s.value}>{planLabel}</Text>
+          <Text style={s.muted}>{premium ? 'No limit on try-ons.' : `${balance} credit${balance === 1 ? '' : 's'} left · new accounts get ${FREE_CREDITS} free`}</Text>
+        </View>
+        <TouchableOpacity style={s.manageBtn} onPress={() => router.navigate('/(tabs)/premium')}>
+          <Text style={s.manageText}>Manage</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={s.divider} />
+      <Text style={s.label}>NOTIFICATIONS</Text>
+      <View style={s.switchRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.value}>Email</Text>
+          <Text style={s.muted}>Low-credit reminders and plan news</Text>
+        </View>
+        <Switch value={profile.notifyEmail} onValueChange={(v) => toggle('notifyEmail', v)}
+          {...SWITCH_COLORS} />
+      </View>
+      <View style={s.switchRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.value}>Push & in-app</Text>
+          <Text style={s.muted}>Alerts inside Atelier</Text>
+        </View>
+        <Switch value={profile.notifyPush} onValueChange={(v) => toggle('notifyPush', v)}
+          {...SWITCH_COLORS} />
+      </View>
+
+      {msg && <Text style={msg.ok ? s.okText : s.errorText}>{msg.text}</Text>}
+
+      <View style={s.divider} />
+      <TouchableOpacity style={s.actionRow} onPress={() => supabase.auth.signOut()}>
+        <Icon name="logout" size={18} color={Colors.text} />
+        <Text style={s.value}>Sign out</Text>
+      </TouchableOpacity>
+
+      {confirmDelete ? (
+        <View style={s.dangerBox}>
+          <Text style={s.value}>Delete your account?</Text>
+          <Text style={s.muted}>Your photo, size, style report, history and remaining credits are removed permanently. This can't be undone.</Text>
+          <View style={s.btnRow}>
+            <PillButton label="Cancel" variant="outline" onPress={() => setConfirmDelete(false)} disabled={deleting} style={s.flexBtn} />
+            <TouchableOpacity style={[s.deleteBtn, s.flexBtn, deleting && { opacity: 0.6 }]} onPress={removeAccount} disabled={deleting}>
+              {deleting ? <ActivityIndicator color={Colors.textOnDark} /> : <Text style={s.deleteBtnText}>Delete account</Text>}
+            </TouchableOpacity>
           </View>
         </View>
       ) : (
-        <Text style={s.hint}>No measurements saved yet. Tap Edit to add them.</Text>
+        <TouchableOpacity style={s.actionRow} onPress={() => setConfirmDelete(true)}>
+          <Icon name="trash" size={18} color={Colors.error} />
+          <Text style={[s.value, { color: Colors.error }]}>Delete account</Text>
+        </TouchableOpacity>
       )}
+    </View>
+  )
+}
 
-      {showSuccess && (
-        <Animated.View style={[s.successBanner, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
-          <Icon name="check" size={26} color={Colors.success} />
-          <View>
-            <Text style={s.successTitle}>Measurements saved</Text>
-            <Text style={s.successHint}>Taking you home…</Text>
-          </View>
-        </Animated.View>
-      )}
+// Brand colours for toggles. activeThumbColor / activeTrackColor are the web
+// (react-native-web) names; without them the "on" state falls back to teal.
+const SWITCH_COLORS = {
+  trackColor: { true: Colors.primary, false: Colors.border },
+  thumbColor: Colors.bgCard,
+  activeTrackColor: Colors.primary,
+  activeThumbColor: Colors.secondary,
+  ios_backgroundColor: Colors.border,
+} as any
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={s.infoRow}>
+      <Text style={s.infoLabel}>{label}</Text>
+      <Text style={s.value} numberOfLines={1}>{value}</Text>
     </View>
   )
 }
 
 const s = StyleSheet.create({
-  safe:       { flex: 1, backgroundColor: Colors.bg },
-  scroll:     { padding: Space.base, paddingBottom: Space.xxl },
-  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  safe:   { flex: 1, backgroundColor: Colors.bg },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll: { padding: Space.base, paddingBottom: Space.xxl },
+  column: { width: '100%', maxWidth: 720, alignSelf: 'center', gap: Space.md },
 
-  header:  { marginBottom: Space.lg },
-  logoSub: { ...Typography.label, color: Colors.primary, letterSpacing: 4, fontSize: 9 },
-  logo:    { ...Typography.h2, letterSpacing: 5, marginTop: -2 },
-
-  // Credits bar
-  creditsBox: {
-    backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: Space.base, marginBottom: Space.md, gap: Space.xs,
+  card: {
+    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border,
+    padding: Space.base, gap: Space.sm,
   },
-  creditsLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  creditsLabel:    { ...Typography.label, letterSpacing: 1 },
-  creditsCount:    { ...Typography.bodySmall, color: Colors.primary, fontWeight: '600' },
-  barBg:  { height: 6, backgroundColor: Colors.bgSubtle, borderRadius: Radius.full, overflow: 'hidden' },
-  barFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
-  creditsHint: { ...Typography.caption, color: Colors.textFaint },
+  progressCard: { backgroundColor: Colors.primarySubtle, borderRadius: Radius.lg, padding: Space.base, gap: Space.sm },
+  cardTitle: { ...Typography.h3 },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Space.md },
+  muted:  { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 20 },
+  label:  { ...Typography.label, color: Colors.textFaint },
+  value:  { ...Typography.body, color: Colors.text },
+  link:   { ...Typography.bodySmall, color: Colors.secondary, fontWeight: '700' },
+  okText: { ...Typography.bodySmall, color: Colors.success },
+  errorText: { ...Typography.bodySmall, color: Colors.error },
 
-  section:    { marginBottom: Space.lg },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Space.sm },
-  sectionLabel: { ...Typography.label, letterSpacing: 1, color: Colors.textMuted, marginBottom: Space.sm },
-  hint:       { ...Typography.bodySmall, color: Colors.textMuted, marginBottom: Space.md },
-  editLink:   { ...Typography.bodySmall, color: Colors.secondaryLight },
+  bar:     { height: 8, borderRadius: Radius.full, backgroundColor: Colors.bgCard, overflow: 'hidden' },
+  barFill: { height: '100%', backgroundColor: Colors.secondary, borderRadius: Radius.full },
 
-  // Membership card
-  memberCard:        { backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Space.base, borderWidth: 1, borderColor: Colors.border, gap: Space.sm },
-  memberCardPremium: { backgroundColor: Colors.secondary, borderColor: Colors.secondary },
-  memberRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  memberPlan:        { ...Typography.h3, fontSize: 18 },
-  memberPlanPremium: { color: Colors.textOnDark },
-  memberHint:        { ...Typography.bodySmall, color: Colors.textMuted },
-  premiumBadge:      { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: Space.md, paddingVertical: 3 },
-  premiumBadgeText:  { ...Typography.label, color: Colors.textOnPrimary, letterSpacing: 1 },
-  upgradeBtn:        { flexDirection: 'row', gap: Space.xs, backgroundColor: Colors.secondary, borderRadius: Radius.full, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', marginTop: Space.xs },
-  upgradeBtnText:    { ...Typography.bodySmall, color: Colors.textOnDark, fontWeight: '600' },
-
-  // Photo
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.base, marginTop: Space.xs },
   photoBox: {
-    width: 120, height: 150, borderRadius: Radius.md,
-    overflow: 'hidden', backgroundColor: Colors.bgSubtle,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  photoImg:         { width: '100%', height: '100%' },
-  photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Space.xs },
-  photoIcon:        { fontSize: 28, color: Colors.textMuted },
-  photoHint:        { ...Typography.caption, color: Colors.textMuted },
-  photoErrorBox:    { marginTop: Space.sm, backgroundColor: Colors.errorBg, borderRadius: Radius.sm, borderWidth: 1, borderColor: '#F3C9C2', padding: Space.sm },
-  photoErrorText:   { ...Typography.caption, color: Colors.error, lineHeight: 16 },
-
-  // Measurements form
-  fieldRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Space.md },
-  fieldLabel:     { ...Typography.bodySmall, color: Colors.text, flex: 1 },
-  fieldInputWrap: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
-  input: {
-    backgroundColor: Colors.bgSubtle, borderRadius: Radius.sm,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: Space.md, paddingVertical: 8,
-    ...Typography.body, color: Colors.text, width: 80, textAlign: 'right',
-  },
-  unit: { ...Typography.caption, color: Colors.textMuted, width: 24 },
-
-  fitRow: { flexDirection: 'row', gap: Space.sm, marginTop: Space.xs, marginBottom: Space.base, flexWrap: 'wrap' },
-  fitChip: {
-    paddingHorizontal: Space.md, paddingVertical: 7, borderRadius: Radius.full,
+    width: 120, height: 160, borderRadius: Radius.md, overflow: 'hidden',
     backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.border,
   },
-  fitChipActive:     { backgroundColor: Colors.secondary, borderColor: Colors.secondary },
-  fitChipText:       { ...Typography.caption, color: Colors.textMuted },
-  fitChipTextActive: { color: Colors.textOnDark },
+  photoImg:    { width: '100%', height: '100%' },
+  photoEmpty:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  photoSaving: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
+  tips:    { flex: 1, minWidth: 180, gap: Space.xs },
+  tipRow:  { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
+  tipText: { ...Typography.bodySmall, color: Colors.textMuted, flex: 1 },
 
-  saveBtnRow:  { marginTop: Space.xl, paddingTop: Space.lg, borderTopWidth: 1, borderTopColor: Colors.border },
-  saveBtn:     { backgroundColor: Colors.secondary, borderRadius: Radius.full, paddingVertical: 16, alignItems: 'center' },
-  saveBtnText: { ...Typography.body, color: Colors.textOnDark, fontWeight: '600' as const, letterSpacing: 0.5 },
+  btnRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm, marginTop: Space.sm },
+  flexBtn: { flexGrow: 1, flexBasis: 140 },
 
-  // Saved display
-  savedGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md, marginTop: Space.xs },
-  savedItem:  { alignItems: 'center', minWidth: 60 },
+  grid:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
+  // Three per row on every width (3 × 2 grid for the six fields).
+  field: { flexGrow: 1, flexBasis: '30%', minWidth: 96, gap: Space.xs },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', gap: Space.xs, minWidth: 0 },
+  input: {
+    // minWidth 0: a web <input> otherwise refuses to shrink below ~170px and overlaps its neighbours.
+    flex: 1, minWidth: 0, width: '100%', backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Space.md, paddingVertical: 11, ...Typography.body, color: Colors.text, textAlign: 'right',
+  },
+  inputText: { textAlign: 'left' },
+  unit: { ...Typography.caption, color: Colors.textMuted, width: 20 },
+
+  savedGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
+  savedItem:  { flexBasis: 96, flexGrow: 1, backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, padding: Space.md, gap: 2 },
   savedValue: { ...Typography.h3, fontSize: 17 },
-  savedLabel: { ...Typography.label, marginTop: 2, color: Colors.textFaint },
+  savedLabel: { ...Typography.caption, color: Colors.textMuted },
 
-  // Success banner — prominent, at top of section
-  successBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: Space.md,
-    backgroundColor: Colors.successBg, borderRadius: Radius.md,
-    borderWidth: 1, borderColor: '#A8D5BA',
-    paddingVertical: Space.md, paddingHorizontal: Space.base,
-    marginTop: Space.md,
-  },
-  successIcon:  { fontSize: 26, color: Colors.success },
-  successTitle: { ...Typography.body, color: Colors.success, fontWeight: '600' },
-  successHint:  { ...Typography.caption, color: Colors.success, opacity: 0.75, marginTop: 2 },
+  chips:      { flexDirection: 'row', gap: Space.sm, flexWrap: 'wrap', marginVertical: Space.xs },
+  chip:       { flexGrow: 1, flexBasis: 90, alignItems: 'center', paddingVertical: 12, borderRadius: Radius.full, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.bgSubtle },
+  chipOn:     { backgroundColor: Colors.secondary, borderColor: Colors.secondary },
+  chipText:   { ...Typography.bodySmall, color: Colors.text, fontWeight: '600' },
+  chipTextOn: { color: Colors.textOnDark },
 
-  signOutBtn: {
-    borderWidth: 1.5, borderColor: Colors.secondary, borderRadius: Radius.full,
-    paddingVertical: 14, alignItems: 'center', marginTop: Space.md,
-  },
-  signOutText: { ...Typography.bodySmall, color: Colors.textMuted },
-
-  // Guest mode
-  guestBanner: {
-    backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: Space.base, marginBottom: Space.lg, gap: Space.sm,
-  },
-  guestTitle:        { ...Typography.h3 },
-  guestHint:         { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 20 },
-  signInPromptBtn:   { backgroundColor: Colors.secondary, borderRadius: Radius.full, paddingVertical: 13, alignItems: 'center', marginTop: Space.xs },
-  signInPromptText:  { ...Typography.bodySmall, color: Colors.textOnDark, fontWeight: '600' as const },
+  infoList:  { gap: Space.sm },
+  infoRow:   { flexDirection: 'row', justifyContent: 'space-between', gap: Space.md },
+  infoLabel: { ...Typography.bodySmall, color: Colors.textMuted },
+  divider:   { height: 1, backgroundColor: Colors.borderSubtle, marginVertical: Space.sm },
+  manageBtn: { borderWidth: 1.5, borderColor: Colors.secondary, borderRadius: Radius.full, paddingHorizontal: Space.base, paddingVertical: Space.sm },
+  manageText: { ...Typography.bodySmall, color: Colors.secondary, fontWeight: '600' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.xs },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, paddingVertical: Space.sm },
+  dangerBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.md, padding: Space.base, gap: Space.sm },
+  deleteBtn: { minHeight: 56, borderRadius: Radius.full, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Space.lg },
+  deleteBtnText: { ...Typography.body, color: Colors.textOnDark, fontWeight: '600' },
 })

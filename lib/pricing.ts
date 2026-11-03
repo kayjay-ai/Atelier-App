@@ -14,4 +14,5 @@ export const PRICING_OPTIONS: PricingOption[] = [
   { type: 'pack_100', label: 'Value pack', blurb: '100 credits', amountInr: 700, credits: 100 },
 ]
 
-export const inr = (n: number) => `₹${n}`
+// Indian digit grouping everywhere: ₹18,000 · ₹1,26,000
+export const inr = (n: number) => `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`

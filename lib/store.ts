@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import type { Measurements, ColorAnalysisResult, GarmentCheck, Membership } from './types'
+import type { Measurements, ColorAnalysisResult, GarmentCheck, Membership, StyleReport } from './types'
 import { fetchMembership } from './api'
 import { FREE_CREDITS } from './pricing'
+import { fetchProfile, downloadUserPhoto } from './supabaseStorage'
 
 // ─── Cloud-only ───────────────────────────────────────────────────────────────
 // None of these stores persist to localStorage / AsyncStorage / IndexedDB. They
@@ -12,26 +13,62 @@ import { FREE_CREDITS } from './pricing'
 
 interface ProfileState {
   ownerId: string | null
+  /** True once the signed-in user's cloud profile has been read. */
+  loaded: boolean
+  name: string | null
+  dateOfBirth: string | null       // YYYY-MM-DD
+  notifyEmail: boolean
+  notifyPush: boolean
   measurements: Measurements | null
   photoUri: string | null
   colorAnalysis: ColorAnalysisResult | null
+  styleReport: StyleReport | null
   setMeasurements: (m: Measurements) => void
   setPhotoUri: (uri: string) => void
   setColorAnalysis: (c: ColorAnalysisResult) => void
+  setStyleReport: (r: StyleReport) => void
+  setAccount: (a: Partial<Pick<ProfileState, 'name' | 'dateOfBirth' | 'notifyEmail' | 'notifyPush'>>) => void
   setOwner: (id: string | null) => void
+  /** Load the profile from Supabase for this user (no-op if already loaded). */
+  hydrate: (userId: string, force?: boolean) => Promise<void>
   reset: () => void
 }
 
-export const useProfileStore = create<ProfileState>()((set) => ({
+const EMPTY_PROFILE = {
+  loaded: false, name: null, dateOfBirth: null, notifyEmail: true, notifyPush: true,
+  measurements: null, photoUri: null, colorAnalysis: null, styleReport: null,
+}
+
+export const useProfileStore = create<ProfileState>()((set, get) => ({
   ownerId: null,
-  measurements: null,
-  photoUri: null,
-  colorAnalysis: null,
+  ...EMPTY_PROFILE,
   setMeasurements: (m) => set({ measurements: m }),
   setPhotoUri: (uri) => set({ photoUri: uri }),
   setColorAnalysis: (c) => set({ colorAnalysis: c }),
+  setStyleReport: (r) => set({ styleReport: r, colorAnalysis: r.color }),
+  setAccount: (a) => set(a),
   setOwner: (id) => set({ ownerId: id }),
-  reset: () => set({ measurements: null, photoUri: null, colorAnalysis: null }),
+  hydrate: async (userId, force = false) => {
+    if (!force && get().ownerId === userId && get().loaded) return
+    if (get().ownerId !== userId) set({ ownerId: userId, ...EMPTY_PROFILE })
+    const remote = await fetchProfile(userId)
+    if (get().ownerId !== userId) return // signed out / switched meanwhile
+    set({
+      loaded: true,
+      name: remote?.name ?? null,
+      dateOfBirth: remote?.dateOfBirth ?? null,
+      notifyEmail: remote?.notifyEmail ?? true,
+      notifyPush: remote?.notifyPush ?? true,
+      measurements: remote?.measurements ?? get().measurements,
+      colorAnalysis: remote?.styleReport?.color ?? remote?.colorAnalysis ?? get().colorAnalysis,
+      styleReport: remote?.styleReport ?? get().styleReport,
+    })
+    if (remote?.photoPath && !get().photoUri) {
+      const uri = await downloadUserPhoto(remote.photoPath)
+      if (uri && get().ownerId === userId) set({ photoUri: uri })
+    }
+  },
+  reset: () => set({ ...EMPTY_PROFILE }),
 }))
 
 interface GarmentHistoryState {

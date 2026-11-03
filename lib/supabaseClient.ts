@@ -27,6 +27,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: getAuthStorage(),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // Web: Google / Apple sign-in return to /auth with the session in the URL,
+    // which the client must read. Native has no URL session.
+    detectSessionInUrl: Platform.OS === 'web',
   },
 })

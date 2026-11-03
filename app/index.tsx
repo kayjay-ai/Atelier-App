@@ -55,8 +55,7 @@ function SplashWeb() {
 }
 
 // ─── Native splash — React Native Animated ────────────────────────────────────
-// For native build: place the logo at assets/logo-quasar-atelier.png
-// and swap { uri: '' } for require('../assets/logo-quasar-atelier.png')
+// Native can't render the SVG, so it uses a PNG export of the same logo.
 function SplashNative() {
   const opacity = useRef(new Animated.Value(0)).current
   const master  = useRef(new Animated.Value(1)).current
@@ -75,8 +74,8 @@ function SplashNative() {
 
   return (
     <Animated.View style={[s.container, { opacity: master }]}>
-      <Animated.View style={{ opacity }}>
-        <Image source={{ uri: '' }} style={s.logo} resizeMode="contain" />
+      <Animated.View style={{ opacity, width: '100%', alignItems: 'center' }}>
+        <Image source={require('../assets/logo-quasar-atelier.png')} style={s.logo} resizeMode="contain" />
       </Animated.View>
     </Animated.View>
   )

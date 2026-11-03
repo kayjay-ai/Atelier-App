@@ -3,14 +3,14 @@ import {
   View, Text, TextInput, TouchableOpacity, Image, StyleSheet,
   SafeAreaView, ScrollView, ActivityIndicator, Alert, Platform,
 } from 'react-native'
-import * as ImagePicker from 'expo-image-picker'
 import * as FileSystem from 'expo-file-system/legacy'
+import { pickImageDataUri } from '../../lib/imageInput'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { useProfileStore, useGarmentStore, useMembershipStore, useCreditsStore, useTryOnCacheStore, tryOnCacheKey } from '../../lib/store'
 import { PurchaseOptions } from '../../lib/purchaseOptions'
 import {
   fetchGarmentFromUrl, fetchTryOn, fetchSizeAssist,
-  fetchVerdict, checkGarmentSafety,
+  fetchVerdict, checkGarmentSafety, postEvent,
 } from '../../lib/api'
 import { getCurrentUserId, saveTryOnToCloud, saveHistoryResults } from '../../lib/supabaseStorage'
 import { Colors, Typography, Space, Radius, Shadow, FONT } from '../../lib/theme'
@@ -62,7 +62,7 @@ const PANELS = [
 function OnboardingModal({ visible, onDismiss }: { visible: boolean; onDismiss: () => void }) {
   if (!visible) return null
   return (
-    <View style={[StyleSheet.absoluteFillObject, m.overlay]}>
+    <View style={[StyleSheet.absoluteFill, m.overlay]}>
       <View style={m.card}>
           <View style={m.brandRow}>
             <Text style={m.brandSub}>QUASAR'S</Text>
@@ -217,33 +217,15 @@ export default function HomeScreen() {
   const sizeCopy    = useRotatingCopy(TEXT_COPY,  actionState.size    === 'loading')
   const verdictCopy = useRotatingCopy(TEXT_COPY,  actionState.verdict === 'loading')
 
-  async function pickImage() {
-    if (Platform.OS !== 'web') {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
-      if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo library access.'); return }
+  async function pickImage(source: 'camera' | 'library' = 'library') {
+    let uri: string | null = null
+    try {
+      uri = await pickImageDataUri(source, { quality: 0.85 })
+    } catch (e: any) {
+      Alert.alert('Photo', e?.message ?? 'Could not open the camera or gallery.')
+      return
     }
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      base64: false,
-    })
-    if (picked.canceled || !picked.assets[0]) return
-    const uri = picked.assets[0].uri
-
-    let base64: string
-    if (Platform.OS === 'web') {
-      const res = await fetch(uri)
-      const blob = await res.blob()
-      base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.readAsDataURL(blob)
-      })
-    } else {
-      const raw = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
-      base64 = `data:image/jpeg;base64,${raw}`
-    }
-    captureGarment({ imageBase64: base64, source: 'upload' })
+    if (uri) captureGarment({ imageBase64: uri, source: 'upload' })
   }
 
   async function loadFromUrl() {
@@ -277,6 +259,7 @@ export default function HomeScreen() {
   // Safety check: fire-and-forget, never blocks buttons.
   // Warning is dismissible and never leaves the UI in a blocked state.
   function captureGarment(g: CapturedGarment) {
+    postEvent('garment_added', { metadata: { source: g.source === 'url' ? 'link' : 'screenshot', url: g.sourceUrl ?? null } })
     setGarment(g)
     setTryOnResult(null)
     setSizeResult(null)
@@ -402,9 +385,13 @@ export default function HomeScreen() {
     setTryOnResult(null)
     setPaywall(false)
     try {
-      const r = await fetchTryOn(garment.imageBase64, garment.name ?? 'garment', userB64)
+      const r = await fetchTryOn(garment.imageBase64, garment.name ?? 'garment', userB64, {
+        inputSource: garment.source === 'url' ? 'link' : 'screenshot',
+        productUrl: garment.sourceUrl,
+        garmentBrand: garment.brand,
+      })
       if (r.membership) { membershipStore.setMembership(r.membership); credits.syncFromMembership(r.membership) }
-      if (r.paywall) { setPaywall(true); setCreditNote(r.message ?? "You're out of credits. Buy more to keep generating:"); setAction('tryon', 'error'); return }
+      if (r.paywall) { postEvent('paywall_viewed', { metadata: { feature: 'tryon' } }); setPaywall(true); setCreditNote(r.message ?? "You're out of credits. Buy more to keep generating:"); setAction('tryon', 'error'); return }
       setTryOnResult(r)
       setAction('tryon', r.fallback ? 'error' : 'done')
       if (r.fallback && r.message?.toLowerCase().includes('busy')) startRetryCountdown('tryon')
@@ -426,6 +413,8 @@ export default function HomeScreen() {
               productId: checkId ?? Date.now().toString(),
               productName: garment.name ?? 'Garment',
               imageDataUri: r.image,
+              garmentDataUri: garment.imageBase64,
+              garmentBrand: garment.brand,
               demo: r.demo,
               retailerProductUrl: garment.sourceUrl,
               garmentSource: garment.sourceUrl ?? 'upload',
@@ -518,6 +507,7 @@ export default function HomeScreen() {
     <SafeAreaView style={s.safe}>
 
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+        <View style={s.column}>
 
         {/* ── Header: persistent hero ── */}
         <View style={s.header}>
@@ -545,43 +535,56 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* ── INTAKE ── */}
+        {/* ── INTAKE — two ways to add a garment (spec §3.3) ── */}
         {!garment && (
           <View style={s.intake}>
-            <TouchableOpacity style={s.uploadBtn} onPress={pickImage}>
-              <Icon name="imageUpload" size={46} color={Colors.bgSubtle} style={s.uploadIcon} />
-              <Text style={s.uploadLabel}>Upload a photo</Text>
-              <Text style={s.uploadHint}>Screenshot from any shopping app</Text>
-            </TouchableOpacity>
+            <View style={[s.intakeCard, s.uploadCard]}>
+              <Icon name="imageUpload" size={40} color={Colors.bgSubtle} />
+              <Text style={s.uploadLabel}>Upload a picture or screenshot</Text>
+              <Text style={s.uploadHint}>From any shopping app or website</Text>
+              <View style={s.uploadBtns}>
+                <TouchableOpacity style={s.lightBtn} onPress={() => pickImage('camera')}>
+                  <Icon name="takePhoto" size={18} color={Colors.secondary} />
+                  <Text style={s.lightBtnText}>Camera</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.lightBtn} onPress={() => pickImage('library')}>
+                  <Icon name="gallery" size={18} color={Colors.secondary} />
+                  <Text style={s.lightBtnText}>Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-            <Text style={s.dividerText}>or paste product URL</Text>
-
-            <View style={s.urlRow}>
-              <TextInput
-                style={s.urlInput}
-                placeholder="ex - www.myntra.com"
-                placeholderTextColor={Colors.textFaint}
-                value={urlInput}
-                onChangeText={(v) => { setUrlInput(v); setUrlError(null) }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                returnKeyType="go"
-                onSubmitEditing={loadFromUrl}
-              />
+            <View style={[s.intakeCard, s.linkCard]}>
+              <Icon name="link" size={36} color={Colors.secondary} />
+              <Text style={s.linkLabel}>Paste a link</Text>
+              <Text style={s.linkHint}>A product link also unlocks Size Assist and "Should I Buy It?"</Text>
+              <View style={s.urlField}>
+                <TextInput
+                  style={s.urlInput}
+                  placeholder="https://www.myntra.com/…"
+                  placeholderTextColor={Colors.textFaint}
+                  value={urlInput}
+                  onChangeText={(v) => { setUrlInput(v); setUrlError(null) }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  returnKeyType="go"
+                  onSubmitEditing={loadFromUrl}
+                />
+              </View>
               <TouchableOpacity
-                style={[s.urlBtn, urlLoading && { opacity: 0.6 }]}
+                style={[s.urlBtn, (urlLoading || !urlInput.trim()) && { opacity: 0.55 }]}
                 onPress={loadFromUrl}
-                disabled={urlLoading}
+                disabled={urlLoading || !urlInput.trim()}
               >
-                {urlLoading ? <ActivityIndicator color={Colors.textOnDark} size="small" /> : <Text style={s.urlBtnText}>Try-On</Text>}
+                {urlLoading ? <ActivityIndicator color={Colors.textOnDark} size="small" /> : <Text style={s.urlBtnText}>Next</Text>}
               </TouchableOpacity>
             </View>
 
             {urlError && (
               <View style={s.urlErrorBox}>
                 <Text style={s.urlErrorText}>{urlError}</Text>
-                <TouchableOpacity style={s.uploadAltBtn} onPress={pickImage}>
+                <TouchableOpacity style={s.uploadAltBtn} onPress={() => pickImage('library')}>
                   <Text style={s.uploadAltText}>Upload a screenshot instead</Text>
                 </TouchableOpacity>
               </View>
@@ -786,6 +789,7 @@ export default function HomeScreen() {
 
           </View>
         )}
+        </View>
       </ScrollView>
     </SafeAreaView>
     {/* ── ONBOARDING OVERLAY ── inline so React 19 event delegation reaches it */}
@@ -797,6 +801,7 @@ export default function HomeScreen() {
 const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: Colors.bg },
   scroll: { paddingHorizontal: Space.lg, paddingTop: Space.base, paddingBottom: Space.xxl },
+  column: { width: '100%', maxWidth: 720, alignSelf: 'center' },
 
   header: {
     marginBottom: Space.xl,
@@ -842,7 +847,7 @@ const s = StyleSheet.create({
     color: Colors.primary,
   },
 
-  intake:   { gap: Space.xl },
+  intake:   { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
   heroSub:  {
     fontFamily: FONT,
     fontSize: 14,
@@ -852,62 +857,40 @@ const s = StyleSheet.create({
     color: Colors.textMuted,
   },
 
-  uploadBtn: {
-    backgroundColor: Colors.secondary, borderRadius: Radius.xl,
-    paddingVertical: 44, paddingHorizontal: Space.xl,
-    alignItems: 'center', gap: Space.lg,
+  // Two equal cards, side by side when there's room (iPad / desktop).
+  intakeCard: {
+    flexBasis: 280, flexGrow: 1, borderRadius: Radius.xl,
+    padding: Space.lg, alignItems: 'center', gap: Space.sm,
   },
-  uploadIcon: {
-    marginBottom: Space.xs,
+  uploadCard: { backgroundColor: Colors.secondary },
+  linkCard:   { backgroundColor: Colors.bgCard, borderWidth: 1.5, borderColor: Colors.secondary },
+  uploadLabel: { fontFamily: FONT, fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.3, color: Colors.textOnDark, textAlign: 'center' },
+  uploadHint:  { fontFamily: FONT, fontSize: 12, color: 'rgba(242,239,232,0.6)', textAlign: 'center' },
+  uploadBtns:  { flexDirection: 'row', gap: Space.sm, marginTop: Space.sm, alignSelf: 'stretch' },
+  lightBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Space.xs,
+    backgroundColor: Colors.bgSubtle, borderRadius: Radius.full, minHeight: 46,
   },
-  uploadLabel: {
-    fontFamily: FONT,
-    fontSize: 15,
-    fontWeight: '700' as const,
-    letterSpacing: 0.3,
-    color: Colors.textOnDark,
-  },
-  uploadHint: {
-    fontFamily: FONT,
-    fontSize: 12,
-    color: 'rgba(242,239,232,0.55)',
-    letterSpacing: 0.3,
-  },
+  lightBtnText: { ...Typography.bodySmall, fontWeight: '600' as const, color: Colors.secondary },
 
-  dividerText: {
-    fontFamily: FONT,
-    fontSize: 13,
-    letterSpacing: 0.3,
-    textAlign: 'center',
-    color: Colors.textMuted,
-  },
-
-  urlRow:  { flexDirection: 'row', gap: Space.sm, alignItems: 'center' },
+  linkLabel: { fontFamily: FONT, fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.3, color: Colors.text },
+  linkHint:  { fontFamily: FONT, fontSize: 12, color: Colors.textMuted, textAlign: 'center' },
+  urlField:  { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', marginTop: Space.sm },
   urlInput: {
-    flex: 1, backgroundColor: Colors.bgSubtle, borderRadius: Radius.full,
-    borderWidth: 1.5, borderColor: Colors.secondary,
-    paddingHorizontal: Space.lg, paddingVertical: 15,
-    fontFamily: FONT,
-    fontSize: 14,
-    color: Colors.text,
-    letterSpacing: 0.2,
+    // minWidth 0: a web <input> otherwise won't shrink and sticks out past the Next button.
+    flex: 1, minWidth: 0, width: '100%', backgroundColor: Colors.bgSubtle, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Space.base, paddingVertical: 13,
+    fontFamily: FONT, fontSize: 14, color: Colors.text, letterSpacing: 0.2,
   },
   urlBtn: {
-    backgroundColor: Colors.secondary, borderRadius: Radius.full,
-    paddingHorizontal: Space.lg, paddingVertical: 15,
-    justifyContent: 'center', alignItems: 'center',
-    minWidth: 96,
+    alignSelf: 'stretch', backgroundColor: Colors.secondary, borderRadius: Radius.full,
+    minHeight: 46, justifyContent: 'center', alignItems: 'center',
   },
-  urlBtnText: {
-    fontFamily: FONT,
-    fontSize: 14,
-    fontWeight: '600' as const,
-    letterSpacing: 0.5,
-    color: Colors.textOnDark,
-  },
+  urlBtnText: { fontFamily: FONT, fontSize: 14, fontWeight: '600' as const, letterSpacing: 0.5, color: Colors.textOnDark },
 
   urlErrorBox: {
-    backgroundColor: Colors.warningBg, borderRadius: Radius.md,
+    flexBasis: '100%', backgroundColor: Colors.warningBg, borderRadius: Radius.md,
     padding: Space.base, borderWidth: 1, borderColor: '#F5DEB3', gap: Space.md,
   },
   urlErrorText:  { ...Typography.bodySmall, color: Colors.warning, lineHeight: 22 },

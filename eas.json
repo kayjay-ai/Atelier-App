@@ -32,6 +32,17 @@
         "EXPO_PUBLIC_SUPABASE_URL": "https://lrpwtartxkgiteuzlwan.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_NSk-GPnOND6REtWXcKhzxw_BLrmNCS3"
       }
+    },
+    "ipad": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://atelier-pkkz.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://lrpwtartxkgiteuzlwan.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_NSk-GPnOND6REtWXcKhzxw_BLrmNCS3"
+      }
     }
   },
   "submit": {
