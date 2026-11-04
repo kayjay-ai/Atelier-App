@@ -3,7 +3,7 @@
 -- own user, keyed by (client_id, external_user_id). Idempotent; run once.
 --
 -- The client REGISTRY (client_id, signing secret, allowed_origins, api_key) lives
--- server-side in config (server/lib/embedClients.mjs) so secrets never touch the
+-- server-side in config (backend/lib/embedClients.mjs) so secrets never touch the
 -- browser. These tables only hold the scoped user mapping + generations.
 --
 -- RLS: writes/reads happen ONLY through the Atelier server (service role, which

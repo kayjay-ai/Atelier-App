@@ -134,7 +134,7 @@ export async function runDailyJob() {
   return report
 }
 
-// `node server/jobs/daily.mjs`
+// `npm run job:daily` (from the repo root)
 if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
   runDailyJob()
     .then((r) => process.exit(Object.values(r).some((v) => v && typeof v === 'object' && v.error) ? 1 : 0))

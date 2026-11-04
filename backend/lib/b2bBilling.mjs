@@ -38,7 +38,7 @@ export class BillingError extends Error {
   }
 }
 
-// Built-in Terms (server/legal/b2b-terms.html, served at /legal/b2b-terms).
+// Built-in Terms (backend/legal/b2b-terms.html, served at /legal/b2b-terms).
 // Bump this together with the version line in that file whenever it changes —
 // stores must then accept the new version before their next payment.
 export const BUILTIN_TERMS_VERSION = '2026-11-03'

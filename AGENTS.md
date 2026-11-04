@@ -4,16 +4,20 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 # Repo layout
 
-- Repo root: the Expo app (expo-router; `app/`, `components/`, `lib/`, `public/`).
-  It calls the backend through `lib/api.ts` at `EXPO_PUBLIC_API_URL`.
-- `server/`: the Express backend, a separate Node package with its own `package.json`.
-  Never import server code from the app, or app code from the server. See `server/README.md`.
-  Server secrets go in `server/.env`, never in the root `.env`, because `EXPO_PUBLIC_*` values are bundled into the app.
-  All server database access goes through `server/lib/db.mjs` (`serviceDb()`, `isMissingSchema()`); don't create Supabase clients elsewhere.
-- `docs/design/`: the design mockups (`1.svg`–`5.svg`) that `lib/theme.ts` and `lib/ui.tsx` follow.
-- `supabase/`: SQL migrations and schema snapshots. There is no runner: paste a migration into the Supabase SQL editor to apply it.
-  Server code tolerates a missing migration, so new migrations need the same tolerance.
+One npm workspace (root `package.json`, one `package-lock.json`). See `README.md` for commands.
 
-Run it locally in two terminals: `npm run api` (backend on :8787) and `npm start` (Expo).
-Use `npm run api:install` the first time.
-The product catalog lives only in `server/data/products.json`; the app doesn't read it.
+- `frontend/`: the Expo app (expo-router; `app/`, `components/`, `lib/`, `public/`, `assets/`).
+  It calls the backend through `frontend/lib/api.ts` at `EXPO_PUBLIC_API_URL`.
+  Add packages with `npx expo install <pkg>` from `frontend/`, so versions match the SDK.
+- `backend/`: the Express API (`index.mjs`, `lib/`, `jobs/`, `data/`, `legal/`, `scripts/`).
+  Never import backend code from the frontend, or frontend code from the backend.
+  All database access goes through `backend/lib/db.mjs` (`serviceDb()`, `isMissingSchema()`); don't create Supabase clients elsewhere.
+- `supabase/`: SQL migrations and schema snapshots. There is no runner: paste a migration into the Supabase SQL editor to apply it.
+  Migrations must be idempotent, and backend code must tolerate a migration that isn't applied yet.
+- `docs/design/`: the design mockups (`1.svg`–`5.svg`) that `frontend/lib/theme.ts` and `frontend/lib/ui.tsx` follow.
+
+Env: `frontend/.env` holds only `EXPO_PUBLIC_*` values, because they are bundled into the public app.
+Secrets go in `backend/.env`. Each has a `.env.example`; keep it in step when adding a variable.
+
+Run locally with `npm run dev` from the root (API on :8787 plus Expo), and check with `npm run typecheck` and `npm run build:web`.
+The product catalog lives only in `backend/data/products.json`.

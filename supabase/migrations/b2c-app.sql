@@ -31,7 +31,7 @@ create table if not exists public.premium_plans (
 );
 
 -- PLACEHOLDERS (spec: "Plan 1 / Plan 2 / Plan 3" until names and prices are
--- decided). Values match server/lib/pricing.mjs, which is the fallback.
+-- decided). Values match backend/lib/pricing.mjs, which is the fallback.
 insert into public.premium_plans (id, name, blurb, price_inr, credits, recommended, sort) values
   ('per_generation', 'Plan 1', 'One try-on, on demand', 15, 1, false, 1),
   ('pack_30',        'Plan 2', '30 try-ons',            350, 30, true,  2),

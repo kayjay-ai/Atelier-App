@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url'
 import path from 'path'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-// Backend-owned data lives in server/data/ (products.json + pre-generated demo try-on images).
+// Backend-owned data lives in backend/data/ (products.json + pre-generated demo try-on images).
 export const PRODUCTS_PATH = path.resolve(__dirname, '../data/products.json')
 export const TRYON_DIR = path.resolve(__dirname, '../data/tryon')
 

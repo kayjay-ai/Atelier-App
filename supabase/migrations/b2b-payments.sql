@@ -483,7 +483,7 @@ begin
     -- two orders can both be paid, or an old one paid late). A renewal or
     -- downgrade outside the renew window would restart a cycle the store just
     -- paid for — hold the money for Atelier to refund instead of applying it.
-    -- Keep b2b_renew_window_days in step with RENEW_WINDOW_DAYS (server/lib/b2bBilling.mjs).
+    -- Keep b2b_renew_window_days in step with RENEW_WINDOW_DAYS (backend/lib/b2bBilling.mjs).
     if v_action in ('renewed', 'downgraded')
        and s.renewal_at - make_interval(days => public.setting_int('b2b_renew_window_days', 3)) > now() then
       v_result := jsonb_build_object('kind', 'plan', 'held', true, 'error', 'cycle_already_active',

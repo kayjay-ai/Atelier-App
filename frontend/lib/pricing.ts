@@ -1,6 +1,6 @@
 import type { PricingOption } from './types'
 
-// Client mirror of the server's pricing (server/lib/pricing.mjs). The SERVER is the
+// Client mirror of the server's pricing (backend/lib/pricing.mjs). The SERVER is the
 // source of truth — the actual charge amount is computed server-side from the
 // purchase `type`, never sent by the client — but these defaults let the UI render
 // instantly and offline. The Premium screen also fetches GET /api/payments/pricing
