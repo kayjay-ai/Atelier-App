@@ -1,4 +1,4 @@
-// ─── Shared UI primitives — the 2.svg design language ─────────────────────────
+// ─── Shared UI primitives — the docs/design/2.svg design language ─────────────────────────
 // One Icon set + one Button system so every screen reads as a single design.
 import { ReactNode } from 'react'
 import {

@@ -82,6 +82,11 @@ export function startHeartbeat(forStore: string) {
   appStateSub = AppState.addEventListener('change', onAppState)
 }
 
+/** Beat now instead of waiting for the next tick (e.g. right after a payment reactivated the store). */
+export function beatNow() {
+  if (storeId) beat()
+}
+
 /** Stop without telling the server (e.g. the session already ended). */
 export function stopHeartbeat() {
   stopTimer()

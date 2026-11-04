@@ -1,0 +1,1159 @@
+{
+    "tables": {
+        "admins": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "email",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": false
+                }
+            ],
+            "policies": [
+                {
+                    "cmd": "SELECT",
+                    "name": "admins can read admins",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "is_admin()"
+                }
+            ],
+            "triggers": null,
+            "constraints": [
+                "UNIQUE (email)",
+                "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE",
+                "PRIMARY KEY (id)"
+            ],
+            "rows_estimate": -1
+        },
+        "try_ons": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "uuid",
+                    "default": "gen_random_uuid()",
+                    "not_null": true
+                },
+                {
+                    "name": "user_id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "product_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "product_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "garment_color",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "storage_path",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "demo",
+                    "type": "boolean",
+                    "default": "false",
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "size_result",
+                    "type": "jsonb",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "verdict_result",
+                    "type": "jsonb",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "garment_source",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "garment_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "retailer_product_url",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "garment_path",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "garment_brand",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                }
+            ],
+            "policies": [
+                {
+                    "cmd": "DELETE",
+                    "name": "Users delete own try-ons",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = user_id)"
+                },
+                {
+                    "cmd": "INSERT",
+                    "name": "Users insert own try-ons",
+                    "check": "(auth.uid() = user_id)",
+                    "roles": [
+                        "public"
+                    ],
+                    "using": null
+                },
+                {
+                    "cmd": "SELECT",
+                    "name": "Users read own try-ons",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = user_id)"
+                },
+                {
+                    "cmd": "ALL",
+                    "name": "try_ons_own",
+                    "check": "(user_id = auth.uid())",
+                    "roles": [
+                        "authenticated"
+                    ],
+                    "using": "(user_id = auth.uid())"
+                }
+            ],
+            "triggers": null,
+            "constraints": [
+                "PRIMARY KEY (id)",
+                "FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE"
+            ],
+            "rows_estimate": 14
+        },
+        "profiles": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "email",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "measurements",
+                    "type": "jsonb",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "style_profile",
+                    "type": "jsonb",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "color_analysis",
+                    "type": "jsonb",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "photo_path",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "date_of_birth",
+                    "type": "date",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "notify_email",
+                    "type": "boolean",
+                    "default": "true",
+                    "not_null": true
+                },
+                {
+                    "name": "notify_push",
+                    "type": "boolean",
+                    "default": "true",
+                    "not_null": true
+                }
+            ],
+            "policies": [
+                {
+                    "cmd": "INSERT",
+                    "name": "Users insert own profile",
+                    "check": "(auth.uid() = id)",
+                    "roles": [
+                        "public"
+                    ],
+                    "using": null
+                },
+                {
+                    "cmd": "SELECT",
+                    "name": "Users read own profile",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = id)"
+                },
+                {
+                    "cmd": "UPDATE",
+                    "name": "Users update own profile",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = id)"
+                },
+                {
+                    "cmd": "ALL",
+                    "name": "admins full access to profiles",
+                    "check": "is_admin()",
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "is_admin()"
+                }
+            ],
+            "triggers": null,
+            "constraints": [
+                "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE",
+                "PRIMARY KEY (id)"
+            ],
+            "rows_estimate": 6
+        },
+        "companies": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "credit_balance",
+                    "type": "integer",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "credit_pool",
+                    "type": "integer",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "user_credit_limit",
+                    "type": "integer",
+                    "default": "'-1'::integer",
+                    "not_null": true
+                },
+                {
+                    "name": "allowed_origins",
+                    "type": "text[]",
+                    "default": "'{}'::text[]",
+                    "not_null": true
+                },
+                {
+                    "name": "active",
+                    "type": "boolean",
+                    "default": "true",
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                }
+            ],
+            "policies": [
+                {
+                    "cmd": "SELECT",
+                    "name": "Public read active companies",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(active = true)"
+                }
+            ],
+            "triggers": null,
+            "constraints": [
+                "CHECK ((credit_balance >= 0))",
+                "PRIMARY KEY (id)"
+            ],
+            "rows_estimate": -1
+        },
+        "purchases": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "uuid",
+                    "default": "gen_random_uuid()",
+                    "not_null": true
+                },
+                {
+                    "name": "user_id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "type",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "amount_inr",
+                    "type": "numeric",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "credits_granted",
+                    "type": "integer",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "cashfree_order_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "status",
+                    "type": "text",
+                    "default": "'created'::text",
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "paid_at",
+                    "type": "timestamp with time zone",
+                    "default": null,
+                    "not_null": false
+                }
+            ],
+            "policies": [
+                {
+                    "cmd": "INSERT",
+                    "name": "Users insert own purchases",
+                    "check": "(auth.uid() = user_id)",
+                    "roles": [
+                        "public"
+                    ],
+                    "using": null
+                },
+                {
+                    "cmd": "SELECT",
+                    "name": "Users read own purchases",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = user_id)"
+                },
+                {
+                    "cmd": "UPDATE",
+                    "name": "Users update own purchases",
+                    "check": "(auth.uid() = user_id)",
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = user_id)"
+                }
+            ],
+            "triggers": null,
+            "constraints": [
+                "UNIQUE (cashfree_order_id)",
+                "PRIMARY KEY (id)",
+                "CHECK ((status = ANY (ARRAY['created'::text, 'paid'::text])))",
+                "CHECK ((type = ANY (ARRAY['per_generation'::text, 'pack_30'::text, 'pack_100'::text])))",
+                "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+            ],
+            "rows_estimate": -1
+        },
+        "b2b_stores": {
+            "rls": false,
+            "columns": [
+                {
+                    "name": "store_id",
+                    "type": "text",
+                    "default": "unique_store_id()",
+                    "not_null": true
+                },
+                {
+                    "name": "company_id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "store_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "store_email",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "store_password_hash",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "store_address",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "city",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "state",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "pincode",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "subscription_plan",
+                    "type": "text",
+                    "default": "'Basic'::text",
+                    "not_null": false
+                },
+                {
+                    "name": "status",
+                    "type": "text",
+                    "default": "'active'::text",
+                    "not_null": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": false
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "FOREIGN KEY (company_id) REFERENCES b2b_companies(company_id) ON DELETE CASCADE",
+                "PRIMARY KEY (store_id)",
+                "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text, 'suspended'::text])))",
+                "UNIQUE (store_email)",
+                "CHECK ((subscription_plan = ANY (ARRAY['Basic'::text, 'Pro'::text, 'Ultra'::text])))"
+            ],
+            "rows_estimate": -1
+        },
+        "b2b_devices": {
+            "rls": false,
+            "columns": [
+                {
+                    "name": "device_id",
+                    "type": "uuid",
+                    "default": "gen_random_uuid()",
+                    "not_null": true
+                },
+                {
+                    "name": "store_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "device_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "device_type",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "mac_address",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "status",
+                    "type": "text",
+                    "default": "'active'::text",
+                    "not_null": false
+                },
+                {
+                    "name": "last_seen",
+                    "type": "timestamp with time zone",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": false
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "PRIMARY KEY (device_id)",
+                "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text])))",
+                "FOREIGN KEY (store_id) REFERENCES b2b_stores(store_id) ON DELETE CASCADE"
+            ],
+            "rows_estimate": -1
+        },
+        "embed_users": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "atelier_user_id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "client_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "external_user_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "email",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "UNIQUE (client_id, external_user_id)",
+                "PRIMARY KEY (atelier_user_id)"
+            ],
+            "rows_estimate": -1
+        },
+        "memberships": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "user_id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "plan",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "tryon_used",
+                    "type": "integer",
+                    "default": "0",
+                    "not_null": true
+                },
+                {
+                    "name": "tryon_limit",
+                    "type": "integer",
+                    "default": "3",
+                    "not_null": true
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "credits_balance",
+                    "type": "integer",
+                    "default": "3",
+                    "not_null": true
+                },
+                {
+                    "name": "free_credits_used",
+                    "type": "boolean",
+                    "default": "false",
+                    "not_null": true
+                }
+            ],
+            "policies": [
+                {
+                    "cmd": "SELECT",
+                    "name": "Users read own membership",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = user_id)"
+                }
+            ],
+            "triggers": null,
+            "constraints": [
+                "CHECK ((credits_balance >= 0))",
+                "PRIMARY KEY (user_id)",
+                "CHECK ((tryon_limit >= 0))",
+                "CHECK ((tryon_used >= 0))",
+                "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+            ],
+            "rows_estimate": -1
+        },
+        "Admin's Table": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "bigint",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "PRIMARY KEY (id)"
+            ],
+            "rows_estimate": -1
+        },
+        "b2b_companies": {
+            "rls": false,
+            "columns": [
+                {
+                    "name": "company_id",
+                    "type": "uuid",
+                    "default": "gen_random_uuid()",
+                    "not_null": true
+                },
+                {
+                    "name": "company_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "brand_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "logo_url",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "gstin",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "manager_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "manager_email",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "primary_contact",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "status",
+                    "type": "text",
+                    "default": "'pending'::text",
+                    "not_null": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": false
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "UNIQUE (manager_email)",
+                "PRIMARY KEY (company_id)",
+                "CHECK ((status = ANY (ARRAY['pending'::text, 'active'::text, 'inactive'::text])))"
+            ],
+            "rows_estimate": -1
+        },
+        "credit_ledger": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "uuid",
+                    "default": "gen_random_uuid()",
+                    "not_null": true
+                },
+                {
+                    "name": "company_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "user_id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "guest_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "referrer_origin",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "action",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "credits",
+                    "type": "integer",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                }
+            ],
+            "policies": [
+                {
+                    "cmd": "SELECT",
+                    "name": "Users read own credit ledger",
+                    "check": null,
+                    "roles": [
+                        "public"
+                    ],
+                    "using": "(auth.uid() = user_id)"
+                }
+            ],
+            "triggers": null,
+            "constraints": [
+                "CHECK (((user_id IS NOT NULL) OR (guest_id IS NOT NULL)))",
+                "FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE",
+                "CHECK ((credits > 0))",
+                "PRIMARY KEY (id)",
+                "FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE SET NULL"
+            ],
+            "rows_estimate": -1
+        },
+        "embed_clients": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "client_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "secret",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "api_key",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "allowed_origins",
+                    "type": "text[]",
+                    "default": "'{}'::text[]",
+                    "not_null": true
+                },
+                {
+                    "name": "active",
+                    "type": "boolean",
+                    "default": "true",
+                    "not_null": true
+                },
+                {
+                    "name": "enabled_features",
+                    "type": "jsonb",
+                    "default": "'{\"size_assist\": true, \"virtual_tryon\": true, \"style_color_assist\": true}'::jsonb",
+                    "not_null": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "PRIMARY KEY (client_id)"
+            ],
+            "rows_estimate": -1
+        },
+        "premium_plans": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "blurb",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "price_inr",
+                    "type": "integer",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "credits",
+                    "type": "integer",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "recommended",
+                    "type": "boolean",
+                    "default": "false",
+                    "not_null": true
+                },
+                {
+                    "name": "active",
+                    "type": "boolean",
+                    "default": "true",
+                    "not_null": true
+                },
+                {
+                    "name": "sort",
+                    "type": "integer",
+                    "default": "0",
+                    "not_null": true
+                },
+                {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "CHECK ((credits > 0))",
+                "CHECK ((id = ANY (ARRAY['per_generation'::text, 'pack_30'::text, 'pack_100'::text])))",
+                "PRIMARY KEY (id)",
+                "CHECK ((price_inr > 0))"
+            ],
+            "rows_estimate": -1
+        },
+        "embed_generations": {
+            "rls": true,
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "uuid",
+                    "default": "gen_random_uuid()",
+                    "not_null": true
+                },
+                {
+                    "name": "client_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "external_user_id",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "atelier_user_id",
+                    "type": "uuid",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "kind",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "image_url",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "result",
+                    "type": "jsonb",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "product_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "default": "now()",
+                    "not_null": true
+                }
+            ],
+            "policies": null,
+            "triggers": null,
+            "constraints": [
+                "CHECK ((kind = ANY (ARRAY['tryon'::text, 'size'::text, 'verdict'::text])))",
+                "PRIMARY KEY (id)"
+            ],
+            "rows_estimate": -1
+        }
+    },
+    "buckets": [
+        {
+            "id": "user-photos",
+            "public": false
+        },
+        {
+            "id": "try-on-results",
+            "public": false
+        }
+    ],
+    "functions": [
+        "handle_new_user() → trigger [security definer]",
+        "consume_tryon(p_user_id uuid) → jsonb [security definer]",
+        "handle_new_membership() → trigger [security definer]",
+        "refund_tryon(p_user_id uuid) → void [security definer]",
+        "is_admin() → boolean [security definer]",
+        "add_credits(p_user_id uuid, p_amount integer, p_plan text) → void [security definer]",
+        "generate_store_id() → text",
+        "unique_store_id() → text",
+        "account_type_for_email(p_email text) → text [security definer]",
+        "dob_from_metadata(meta jsonb) → date"
+    ],
+    "auth_triggers": [
+        "on_auth_user_created → handle_new_user",
+        "on_auth_user_created_membership → handle_new_membership"
+    ]
+}

@@ -4,7 +4,7 @@
 import { Platform } from 'react-native'
 
 export const Colors = {
-  // Brand primaries — gold accent from 2.svg (#AA9B84)
+  // Brand primaries — gold accent from docs/design/2.svg (#AA9B84)
   primary:        '#AA9B84', // warm sand/gold — accents, icons, inactive nav, eyebrows
   primaryLight:   '#C4B79F', // tinted sand — hover, selected borders
   primaryDark:    '#8F8069', // deeper sand — pressed states
@@ -18,7 +18,7 @@ export const Colors = {
   // Backgrounds (warm neutrals derived from secondary)
   bg:             '#FAF8F5', // main app background
   bgCard:         '#FFFFFF', // card / modal surface
-  bgSubtle:       '#F2EFE8', // subtle section fill / light pills (from 2.svg)
+  bgSubtle:       '#F2EFE8', // subtle section fill / light pills (from docs/design/2.svg)
   bgDark:         '#423D3A', // dark surface (= secondary)
 
   // Borders
@@ -145,7 +145,7 @@ export const Radius = {
   full: 999,
 } as const
 
-// ─── 2.svg design language ────────────────────────────────────────────────────
+// ─── docs/design/2.svg design language ────────────────────────────────────────────────────
 // The PRIMARY action ("Try it on") uses this horizontal purple→green gradient.
 // Everything else uses solid charcoal (secondary) or an outlined pill.
 export const Gradient = {
@@ -154,7 +154,7 @@ export const Gradient = {
   primaryEnd:   { x: 1, y: 0 },
 }
 
-// Soft floating shadow used by cards and the bottom nav in 2.svg.
+// Soft floating shadow used by cards and the bottom nav in docs/design/2.svg.
 export const Shadow = {
   card: {
     shadowColor: '#423D3A',

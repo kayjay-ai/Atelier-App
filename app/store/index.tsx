@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, ActivityIndicator,
 } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
-import { useAccountStore } from '../../lib/account'
+import { useAccountStore, usableCredits } from '../../lib/account'
 import {
   listFolders, storedImageDataUri, saveFolderResult, saveSizeOnResult, useStoreSession,
   reportShared, reportGarmentSelected,
@@ -102,7 +102,7 @@ export default function StoreHomeScreen() {
 
   if (account?.type !== 'b2b_company') return null
   const { client, features } = account
-  const outOfCredits = client.creditsBalance <= 0
+  const outOfCredits = usableCredits(client) <= 0
 
   function resetResult() {
     setPhase('idle'); setFailure(null); setResultImage(null); setResultId(null); setSaveError(null)

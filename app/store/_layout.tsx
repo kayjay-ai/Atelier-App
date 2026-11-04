@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Redirect, router } from 'expo-router'
+import { Redirect, router, usePathname } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
-import { useAccountStore } from '../../lib/account'
+import { useAccountStore, usableCredits } from '../../lib/account'
 import { dismissStoreNotice } from '../../lib/api'
 import { SUPPORT_EMAIL } from '../../lib/b2b'
 import { DEMO_CLIENT_ID } from '../../lib/demoCompany'
-import { signOutStore, startHeartbeat, stopHeartbeat, useHeartbeat } from '../../lib/heartbeat'
+import { beatNow, signOutStore, startHeartbeat, stopHeartbeat, useHeartbeat } from '../../lib/heartbeat'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
 import { Icon, IconName, bottomTabOptions } from '../../lib/ui'
+import PlanScreen from './plan'
 
 // ─── B2B in-store app shell (/store) ──────────────────────────────────────────
 // Only company logins reach this layout; anyone else is sent back to sign-in.
@@ -24,7 +25,7 @@ function RailIcon({ icon, focused }: { icon: IconName; focused: boolean }) {
 function StoreHeader() {
   const account = useAccountStore((s) => s.account)
   if (account?.type !== 'b2b_company') return null
-  const credits = account.client.creditsBalance
+  const credits = usableCredits(account.client)
   return (
     <SafeAreaView edges={['top']} style={h.safe}>
       <View style={h.row}>
@@ -74,22 +75,23 @@ function StoreBanner() {
   const renewal = client.renewalAt ? Date.parse(client.renewalAt) : null
   const trialEnd = client.trialEndsAt ? Date.parse(client.trialEndsAt) : null
   const included = plan?.creditsIncluded ?? 0
+  const credits = usableCredits(client)
 
   if (notice && (notice.body || notice.subject)) {
     text = notice.body || notice.subject
     onClose = () => { dismissNotice(); dismissStoreNotice(notice.id) }
   } else if (client.status === 'trial' && trialEnd && trialEnd < now) {
-    tone = 'error'; text = 'Your free trial has ended — contact Atelier to choose a plan.'
+    tone = 'error'; text = 'Your free trial has ended — choose a plan in Plan & Credits.'
   } else if (renewal && renewal < now) {
     const pauseAt = renewal + graceDays * DAY_MS
     tone = 'error'
     text = pauseAt > now
-      ? `Your plan renewal is overdue — iPads pause on ${fmtDay(pauseAt)} unless it is renewed.`
-      : 'Your plan has expired — contact Atelier to renew.'
-  } else if (client.creditsBalance <= 0) {
-    tone = 'error'; text = 'Credits used up — new try-ons are paused. Contact your Atelier admin to top up.'
-  } else if (included > 0 && (client.creditsBalance / included) * 100 <= lowPct) {
-    text = `${Math.round((client.creditsBalance / included) * 100)}% of your credits left — upgrade or top up your plan.`
+      ? `Your plan renewal is overdue — iPads pause on ${fmtDay(pauseAt)} unless you renew in Plan & Credits.`
+      : 'Your plan has expired — renew it in Plan & Credits.'
+  } else if (credits <= 0) {
+    tone = 'error'; text = 'Credits used up — new try-ons are paused. Renew, upgrade or buy top-up credits in Plan & Credits.'
+  } else if (included > 0 && (credits / included) * 100 <= lowPct) {
+    text = `${Math.round((credits / included) * 100)}% of your credits left — upgrade or buy top-up credits in Plan & Credits.`
   }
   if (!text) return null
 
@@ -146,6 +148,11 @@ export default function StoreLayout() {
   const userId = useAccountStore((s) => s.userId)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(userId ? 'ready' : 'loading')
   const [attempt, setAttempt] = useState(0)
+  const pathname = usePathname()
+  // A suspended store may still open Plan & Credits to pay and reactivate (the
+  // server decides whether it may: only expiry-suspended stores can buy).
+  const [lockedPlanOpen, setLockedPlanOpen] = useState(false)
+  const onPlanRoute = pathname === '/store/plan' // e.g. web checkout returning with ?order_id=
 
   // Web reloads / deep links land here without going through sign-in.
   useEffect(() => {
@@ -165,6 +172,13 @@ export default function StoreLayout() {
     return () => stopHeartbeat()
   }, [heartbeatStore])
 
+  // A payment just reactivated the store: re-check the heartbeat's status now
+  // rather than staying locked until the next 30 s tick.
+  const accountStatus = account?.type === 'b2b_company' ? account.client.status : null
+  useEffect(() => {
+    if (accountStatus === 'active' && storeStatus === 'suspended') beatNow()
+  }, [accountStatus, storeStatus])
+
   if (status === 'loading') {
     return <View style={x.center}><ActivityIndicator color={Colors.primary} /></View>
   }
@@ -179,7 +193,7 @@ export default function StoreLayout() {
   }
   if (account?.type !== 'b2b_company') return <Redirect href="/auth" />
 
-  if (account.client.status === 'suspended' || account.client.status === 'revoked') {
+  if (account.client.status === 'revoked') {
     return (
       <FullScreenMessage
         title="Your account is paused"
@@ -188,7 +202,42 @@ export default function StoreLayout() {
     )
   }
 
-  // The heartbeat reports b2b_stores.status; anything but 'active' locks the app.
+  // Suspended (by the heartbeat or the account row): offer Plan & Credits, where
+  // a store whose plan or trial ran out can pay to reactivate. A store an admin
+  // put on hold sees the reason there and can't buy.
+  const suspended = account.client.status === 'suspended' || storeStatus === 'suspended'
+  if (suspended && (lockedPlanOpen || onPlanRoute)) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+        <SafeAreaView edges={['top']} style={h.safe}>
+          <View style={h.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={h.sub}>QUASAR'S ATELIER · STORE</Text>
+              <Text style={h.company} numberOfLines={1}>{account.client.companyName} · paused</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => { setLockedPlanOpen(false); if (onPlanRoute) router.replace('/store') }}
+              accessibilityRole="button"
+            >
+              <Text style={x.linkText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+        <PlanScreen />
+      </View>
+    )
+  }
+  if (suspended) {
+    return (
+      <FullScreenMessage
+        title="Your account is paused"
+        body={`Atelier access for ${account.client.storeName || account.client.companyName} is paused — usually because the plan or free trial has ended. Renew in Plan & Credits, or contact support.`}
+        action={{ label: 'Open Plan & Credits', onPress: () => setLockedPlanOpen(true) }}
+      />
+    )
+  }
+
+  // The heartbeat reports b2b_stores.status; anything else but 'active' locks the app.
   if (storeStatus && storeStatus !== 'active') {
     return (
       <FullScreenMessage

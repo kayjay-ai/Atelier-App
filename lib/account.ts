@@ -58,10 +58,23 @@ function toClient(row: any): Client {
     billingAddress: address || null,
     planId: row.subscription_plan ?? null,
     creditsBalance: row.credits_balance ?? 0,
+    topupCredits: typeof row.topup_credits === 'number' ? row.topup_credits : null,
     status: toStatus(row),
     trialEndsAt: row.trial_ends_at ?? null,
     renewalAt: row.renewal_at ?? null,
   }
+}
+
+/**
+ * Credits the store can spend right now. Once the cycle's renewal date passes,
+ * its plan credits have expired (the DB drops them lazily), so only top-up
+ * credits are left — same rule as the server's billing overview.
+ */
+export function usableCredits(client: Client): number {
+  const total = client.creditsBalance
+  if (client.topupCredits == null) return total // migration not applied: no split known
+  const ended = !!client.renewalAt && Date.parse(client.renewalAt) <= Date.now()
+  return ended ? Math.min(client.topupCredits, total) : total
 }
 
 /** Resolve the signed-in user's account. Throws on a real (network/DB) failure. */
@@ -72,8 +85,11 @@ export async function fetchAccount(userId: string, email?: string | null): Promi
   // email). The email filter too, so routing stays right even before RLS is on.
   if (!email) return { type: 'b2c_customer' }
   const pattern = email.trim().replace(/[\\%_]/g, (ch) => `\\${ch}`) // ilike = case-insensitive, exact
-  const { data: row, error } = await supabase
-    .from('b2b_stores').select(STORE_SELECT).ilike('store_email', pattern).maybeSingle()
+  const byEmail = (cols: string) =>
+    supabase.from('b2b_stores').select(cols).ilike('store_email', pattern).maybeSingle<any>()
+  let { data: row, error } = await byEmail(`${STORE_SELECT}, topup_credits`)
+  // b2b-payments.sql not applied yet → no topup_credits column; read without it.
+  if (error && /topup_credits/i.test(error.message)) ({ data: row, error } = await byEmail(STORE_SELECT))
   if (error) {
     if (isMissingTable(error.message)) return { type: 'b2c_customer' }
     throw error
@@ -190,7 +206,10 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   setCreditsBalance: (n) => {
     const account = get().account
     if (account?.type !== 'b2b_company') return
-    set({ account: { ...account, client: { ...account.client, creditsBalance: Math.max(0, n) } } })
+    const creditsBalance = Math.max(0, n)
+    // Spending takes plan credits first, so top-ups only shrink to fit the total.
+    const topupCredits = account.client.topupCredits == null ? account.client.topupCredits : Math.min(account.client.topupCredits, creditsBalance)
+    set({ account: { ...account, client: { ...account.client, creditsBalance, topupCredits } } })
   },
   clear: () => set({ userId: null, email: null, account: null, session: null, loadedAt: 0 }),
   dismissNotice: () => {

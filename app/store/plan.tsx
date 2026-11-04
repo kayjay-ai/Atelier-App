@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity, useWindowDimensions, Modal, ActivityIndicator, Platform,
 } from 'react-native'
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router'
 import { supabase } from '../../lib/supabaseClient'
-import { useAccountStore } from '../../lib/account'
+import { useAccountStore, usableCredits } from '../../lib/account'
 import { DEMO_CLIENT_ID } from '../../lib/demoCompany'
 import { SUPPORT_EMAIL } from '../../lib/b2b'
 import { inr } from '../../lib/pricing'
@@ -65,13 +65,6 @@ const PLAN_BUTTON: Record<NonNullable<B2BPlanOption['action']>, (name: string) =
   switch: (n) => `Switch to ${n}`,
 }
 
-// Display-only GST (prices exclude GST) until the server's figures arrive.
-const GST_RATE = 0.18
-const gstOf = (price: number) => {
-  const gstInr = Math.round(price * GST_RATE * 100) / 100
-  return { gstInr, totalInr: Math.round((price + gstInr) * 100) / 100 }
-}
-
 type Purchase = { kind: 'plan'; plan: B2BPlanOption } | { kind: 'topup'; pack: B2BTopupPack }
 type Notice = { tone: 'ok' | 'info' | 'error'; text: string }
 
@@ -93,7 +86,8 @@ const STACK_BELOW = 560
 export default function PlanScreen() {
   const { width } = useWindowDimensions()
   const router = useRouter()
-  const params = useLocalSearchParams<{ order_id?: string }>()
+  // Global: this screen is also shown by the store layout while it is paused.
+  const params = useGlobalSearchParams<{ order_id?: string }>()
   const [plansWidth, setPlansWidth] = useState(0)
   const stackPlans = (plansWidth || width) < STACK_BELOW
   const account = useAccountStore((st) => st.account)
@@ -142,9 +136,10 @@ export default function PlanScreen() {
   const payEnabled = !!billing?.enabled
 
   // Balances: the server splits plan vs. top-up credits; before it answers,
-  // show the account total as plan credits.
-  const planCredits = billing?.store.planCredits ?? client.creditsBalance
-  const topupCredits = billing?.store.topupCredits ?? 0
+  // use the account row (same expiry rule as the server).
+  const accountTopup = Math.min(client.topupCredits ?? 0, client.creditsBalance)
+  const planCredits = billing?.store.planCredits ?? Math.max(0, usableCredits(client) - accountTopup)
+  const topupCredits = billing?.store.topupCredits ?? accountTopup
   const total = planCredits + topupCredits
   const included = billing?.store.planCreditsIncluded ?? plan?.creditsIncluded ?? 0
   const lowPct = session?.settings.lowCreditPct ?? 20
@@ -152,11 +147,13 @@ export default function PlanScreen() {
   const low = included > 0 && (planCredits / included) * 100 <= lowPct && topupCredits === 0
   const renewalAt = billing?.store.renewalAt ?? client.renewalAt
 
-  const plans: B2BPlanOption[] = billing?.plans ?? account.plans.map((p) => ({
-    // Shown until the server answers; the server re-prices and re-checks on pay.
-    id: p.id, name: p.name, priceInr: p.priceInr, ...gstOf(p.priceInr), cycle: p.cycle, credits: p.creditsIncluded,
-    current: p.id === plan?.id, action: p.id === plan?.id ? 'renew' : 'choose', allowed: !isDemo, reason: null,
-  }))
+  // Until the server answers, show the plans without GST totals or buttons —
+  // GST and what may be bought come only from the server.
+  const plans: (Omit<B2BPlanOption, 'gstInr' | 'totalInr'> & { gstInr: number | null; totalInr: number | null })[] =
+    billing?.plans ?? account.plans.map((p) => ({
+      id: p.id, name: p.name, priceInr: p.priceInr, gstInr: null, totalInr: null, cycle: p.cycle, credits: p.creditsIncluded,
+      current: p.id === plan?.id, action: null, allowed: false, reason: null,
+    }))
   const packs = billing?.packs ?? []
 
   // Why payment can't start yet (shown in the confirm step), or null when it can.
@@ -164,6 +161,8 @@ export default function PlanScreen() {
     ? 'Payments aren’t available in the preview company.'
     : !billing
       ? `${billingError ?? 'Billing is not available right now.'} Please try again later or contact Atelier support.`
+      : billing.setup?.database === false
+        ? 'Online payment isn’t switched on yet (the billing database update hasn’t been applied). Contact Atelier support.'
       : !billing.setup?.cashfree
         ? 'Online payment isn’t switched on yet (Cashfree is not configured). Contact Atelier support.'
         : !billing.setup?.terms
@@ -220,7 +219,9 @@ export default function PlanScreen() {
           <View key={p.id} style={[s.planCard, stackPlans ? s.planCardStack : s.planCardRow, p.current && s.planCurrent]}>
             <Text style={s.planName}>{p.name}</Text>
             <Text style={s.planPrice} numberOfLines={1}>{inr(p.priceInr)}</Text>
-            <Text style={s.muted}>per {p.cycle === 'annual' ? 'year' : 'month'} + 18% GST · {inr(p.totalInr)} total</Text>
+            <Text style={s.muted}>
+              per {p.cycle === 'annual' ? 'year' : 'month'} + GST{p.totalInr != null ? ` · ${inr(p.totalInr)} total` : ''}
+            </Text>
             <Text style={s.body}>{p.credits.toLocaleString('en-IN')} credits / month</Text>
             <Text style={s.muted}>{inr(Math.round(p.priceInr / p.credits))} per credit</Text>
             {p.current && <Text style={s.currentTag}>Current plan</Text>}
@@ -229,7 +230,7 @@ export default function PlanScreen() {
                 <TouchableOpacity
                   style={[p.current ? s.planBtn : s.planBtnSolid, !p.allowed && s.btnDisabled]}
                   disabled={!p.allowed}
-                  onPress={() => setPurchase({ kind: 'plan', plan: p })}
+                  onPress={() => { if (p.totalInr != null) setPurchase({ kind: 'plan', plan: p as B2BPlanOption }) }}
                 >
                   <Text style={p.current ? s.planBtnText : s.planBtnSolidText}>{PLAN_BUTTON[p.action](p.name)}</Text>
                 </TouchableOpacity>
@@ -282,8 +283,10 @@ export default function PlanScreen() {
               <View key={x.orderId} style={s.invoiceRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.body}>{x.itemName}</Text>
-                  <Text style={[s.muted, x.status === 'failed' && { color: Colors.error }]}>
-                    {inr(x.amountInr)} incl. GST · {x.status === 'paid' ? `Paid ${fmtDate(x.paidAt)}` : 'Not completed'} · {x.orderId}
+                  <Text style={[s.muted, x.status !== 'paid' && { color: x.status === 'review' ? Colors.warning : Colors.error }]}>
+                    {inr(x.amountInr)} incl. GST · {x.status === 'paid'
+                      ? `Paid ${fmtDate(x.paidAt)}`
+                      : x.status === 'review' ? 'Received — being checked by Atelier support' : 'Not completed'} · {x.orderId}
                   </Text>
                 </View>
               </View>
@@ -292,7 +295,7 @@ export default function PlanScreen() {
         </>
       )}
 
-      <Text style={s.label}>INVOICES</Text>
+      <Text style={s.label}>INVOICES · PLAN PRICE EXCL. GST</Text>
       <View style={s.card}>
         {invoices.length === 0 ? (
           <Text style={s.muted}>No invoices yet — they will appear here once billing is set up.</Text>
@@ -350,7 +353,7 @@ function ConfirmPurchase({ purchase, billing, setupProblem, credits, onClose, on
   const isPlan = purchase.kind === 'plan'
   const title = isPlan ? `${purchase.plan.name} plan` : `${purchase.pack.credits.toLocaleString('en-IN')} top-up credits`
   const item = isPlan ? purchase.plan : purchase.pack
-  const gstPct = Math.round((billing?.gstRate ?? GST_RATE) * 100)
+  const gstPct = billing ? Math.round(billing.gstRate * 100) : null
   const nextRenewal = new Date(Date.now() + 30 * 86_400_000).toISOString() // display only; the server sets it
 
   const effects: string[] = isPlan
@@ -397,7 +400,7 @@ function ConfirmPurchase({ purchase, billing, setupProblem, credits, onClose, on
           <Text style={s.sheetTitle}>{title}</Text>
           <View style={s.priceTable}>
             <View style={s.priceRow}><Text style={s.body}>Price</Text><Text style={s.body}>{inr(item.priceInr)}</Text></View>
-            <View style={s.priceRow}><Text style={s.body}>GST ({gstPct}%)</Text><Text style={s.body}>{inr(item.gstInr)}</Text></View>
+            <View style={s.priceRow}><Text style={s.body}>GST{gstPct != null ? ` (${gstPct}%)` : ''}</Text><Text style={s.body}>{inr(item.gstInr)}</Text></View>
             <View style={[s.priceRow, s.priceTotal]}><Text style={s.planName}>Total</Text><Text style={s.sheetAmount}>{inr(item.totalInr)}</Text></View>
           </View>
           <Text style={s.muted}>Paid securely via Cashfree</Text>

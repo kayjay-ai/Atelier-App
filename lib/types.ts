@@ -172,7 +172,9 @@ export interface Client {
   gstin: string | null
   billingAddress: string | null
   planId: string | null
-  creditsBalance: number
+  creditsBalance: number      // total = plan credits + top-up credits
+  /** Never-expiring part of creditsBalance; null before the b2b-payments migration. */
+  topupCredits?: number | null
   status: ClientStatus
   trialEndsAt: string | null
   renewalAt: string | null

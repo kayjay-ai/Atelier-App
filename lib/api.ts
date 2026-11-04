@@ -313,14 +313,14 @@ export interface B2BPayment {
   itemName: string
   amountInr: number     // total charged, incl. GST
   credits: number
-  status: 'paid' | 'failed'
+  status: 'paid' | 'failed' | 'review'   // review = received, held for Atelier to check
   createdAt: string
   paidAt: string | null
 }
 
 export interface B2BBilling {
   enabled: boolean
-  setup?: { cashfree: boolean; terms: boolean } // missing on older servers
+  setup?: { cashfree: boolean; terms: boolean; database?: boolean } // missing on older servers
   mode: 'sandbox' | 'production'
   gstInclusive: boolean
   gstRate: number
