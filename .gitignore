@@ -42,3 +42,6 @@ frontend/android/
 
 # local env files (contains API keys)
 .env
+
+# Cloudflare wrangler local state
+.wrangler/
