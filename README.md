@@ -35,6 +35,7 @@ so it may only hold `EXPO_PUBLIC_*` values. Secrets live only in `backend/.env`,
 | `npm run dev` | Starts the API (http://localhost:8787, restarts on change) and Expo together |
 | `npm run dev:api` | API only |
 | `npm run dev:app` | Expo only (interactive: press `w` for web, `i`/`a` for simulators) |
+| `npm test` | Backend tests, then the app's unit tests (no database, Gemini or Cashfree needed) |
 | `npm run typecheck` | TypeScript check of the app |
 | `npm run build:web` | Static web build into `frontend/dist/` |
 | `npm start` | Runs the API the way production does |
@@ -62,6 +63,22 @@ migrations must keep both properties.
 - Payments: the API creates Cashfree orders and verifies them server-to-server; the app never
   decides an amount. Cashfree calls `<API_PUBLIC_URL>/api/payments/webhook`.
 - The product catalog lives in `backend/data/products.json`.
+
+### Backend layout
+
+| Path | What it holds |
+|---|---|
+| `backend/index.mjs` | Starts the server |
+| `backend/app.mjs` | Shared middleware (CORS, webhook raw body, logging, usage log), mounts the routes |
+| `backend/routes/` | One file per area: `account`, `payments`, `embed`, `b2b`, `ai`, `admin` |
+| `backend/lib/identity.mjs` | Who is calling (user, store, iPad), worked out once per request |
+| `backend/lib/features.mjs` | Every AI feature and its toggles and costs |
+| `backend/lib/ai.mjs` | Gemini calls and marked stand-in answers |
+| `backend/lib/spend.mjs` | Charging and refunding credits on every ledger |
+| `backend/lib/payments.mjs` | Cashfree payments for credit packs and store billing, one webhook |
+| `backend/test/` | `node:test` suites (`npm test`) |
+
+Business terms (store, plan credits, top-up credits, stand-in, ...) are defined in [`GLOSSARY.md`](GLOSSARY.md).
 
 ## Production
 

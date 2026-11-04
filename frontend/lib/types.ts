@@ -27,7 +27,15 @@ export interface Palette {
   colors: ColorSwatch[]
 }
 
-export interface ColorAnalysisResult {
+// Every AI answer may be a stand-in (no key, rate limit, failure). The API marks
+// those; read them through lib/aiOutcome.ts, never by matching their text.
+export interface AiFallbackFlags {
+  fallback?: boolean
+  fallbackReason?: 'no_key' | 'rate_limit' | 'failed'
+  retryable?: boolean           // worth retrying shortly (false: no key / a specific refusal)
+}
+
+export interface ColorAnalysisResult extends AiFallbackFlags {
   undertone: 'warm' | 'cool' | 'neutral'
   season: string
   flatteringColors: ColorSwatch[]
@@ -72,12 +80,11 @@ export interface Membership {
   remaining?: number | null    // legacy mirror; null when premium (unlimited)
 }
 
-export interface TryOnResult {
+export interface TryOnResult extends AiFallbackFlags {
   image?: string
   demo?: boolean
   debug?: boolean
   cached?: boolean
-  fallback?: boolean
   paywall?: boolean
   message?: string
   membership?: Membership | null
@@ -89,7 +96,7 @@ export interface TryOnResult {
   }
 }
 
-export interface SizeResult {
+export interface SizeResult extends AiFallbackFlags {
   size: string
   confidence: 'high' | 'medium' | 'low'
   explanation: string
@@ -101,7 +108,7 @@ export interface SizeResult {
   }
 }
 
-export interface StyleResult {
+export interface StyleResult extends AiFallbackFlags {
   archetype: string
   narrative: string
   palettes: Palette[]
@@ -121,7 +128,7 @@ export interface StyleReport {
   createdAt: string
 }
 
-export interface VerdictResult {
+export interface VerdictResult extends AiFallbackFlags {
   call: 'Yes' | 'Maybe' | 'Skip'
   verdict: string
   whyItWorks: string
@@ -173,8 +180,8 @@ export interface Client {
   billingAddress: string | null
   planId: string | null
   creditsBalance: number      // total = plan credits + top-up credits
-  /** Never-expiring part of creditsBalance; null before the b2b-payments migration. */
-  topupCredits?: number | null
+  /** What can be spent now (plan credits of an ended cycle excluded), from the database. */
+  usableCredits?: number
   status: ClientStatus
   trialEndsAt: string | null
   renewalAt: string | null

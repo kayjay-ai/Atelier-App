@@ -4,7 +4,7 @@ import {
   SafeAreaView, ScrollView, Image, ActivityIndicator,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { useProfileStore, useMembershipStore, useCreditsStore } from '../../lib/store'
+import { useProfileStore, useMembershipStore, isPremium, creditsLeft } from '../../lib/store'
 import { supabase } from '../../lib/supabaseClient'
 import { upsertProfile, uploadUserPhoto } from '../../lib/supabaseStorage'
 import { postEvent, deleteAccount } from '../../lib/api'
@@ -307,9 +307,9 @@ function FitSection({ session }: { session: Session }) {
 function AccountSection({ session }: { session: NonNullable<Session> }) {
   const profile = useProfileStore()
   const router = useRouter()
-  const balance = useCreditsStore((st) => st.balance)
   const membership = useMembershipStore((st) => st.membership)
-  const premium = !!membership?.isPremium || membership?.plan === 'premium'
+  const premium = isPremium(membership)
+  const balance = creditsLeft(membership) ?? '—' // '—' until loaded
 
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(profile.name ?? '')

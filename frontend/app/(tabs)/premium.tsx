@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { supabase } from '../../lib/supabaseClient'
-import { useMembershipStore, useCreditsStore } from '../../lib/store'
+import { useMembershipStore, isPremium, creditsLeft } from '../../lib/store'
 import { PurchaseOptions, usePricingOptions } from '../../lib/purchaseOptions'
 import { FREE_CREDITS, inr } from '../../lib/pricing'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
@@ -19,8 +19,7 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day
 export default function PremiumScreen() {
   const router = useRouter()
   const { membership, refresh } = useMembershipStore()
-  const balance = useCreditsStore((st) => st.balance)
-  const syncFromMembership = useCreditsStore((st) => st.syncFromMembership)
+  const balance = creditsLeft(membership) ?? '—' // '—' until loaded
   const options = usePricingOptions()
   const [userId, setUserId] = useState<string | null>(null)
   const [checked, setChecked] = useState(false)
@@ -34,7 +33,7 @@ export default function PremiumScreen() {
 
   const load = useCallback(async () => {
     if (!userId) return
-    refresh().then((m) => syncFromMembership(m))
+    refresh()
     const { data } = await supabase
       .from('purchases')
       .select('id, type, amount_inr, credits_granted, paid_at, created_at')
@@ -58,7 +57,7 @@ export default function PremiumScreen() {
     )
   }
 
-  const premium = !!membership?.isPremium || membership?.plan === 'premium'
+  const premium = isPremium(membership)
   const onFreeCredits = !premium && !membership?.plan
   const planName = (type: string) => options.find((o) => o.type === type)?.label ?? type
   const last = purchases[0]

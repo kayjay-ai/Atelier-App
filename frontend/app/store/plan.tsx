@@ -136,10 +136,9 @@ export default function PlanScreen() {
   const payEnabled = !!billing?.enabled
 
   // Balances: the server splits plan vs. top-up credits; before it answers,
-  // use the account row (same expiry rule as the server).
-  const accountTopup = Math.min(client.topupCredits ?? 0, client.creditsBalance)
-  const planCredits = billing?.store.planCredits ?? Math.max(0, usableCredits(client) - accountTopup)
-  const topupCredits = billing?.store.topupCredits ?? accountTopup
+  // show what the store can spend as plan credits.
+  const planCredits = billing?.store.planCredits ?? usableCredits(client)
+  const topupCredits = billing?.store.topupCredits ?? 0
   const total = planCredits + topupCredits
   const included = billing?.store.planCreditsIncluded ?? plan?.creditsIncluded ?? 0
   const lowPct = session?.settings.lowCreditPct ?? 20

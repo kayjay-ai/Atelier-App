@@ -110,34 +110,20 @@ export const useMembershipStore = create<MembershipState>((set) => ({
 }))
 
 // ─── Credits ────────────────────────────────────────────────────────────────
-// Mirrors the server credit balance (the authoritative count lives on the
-// membership row, decremented atomically by consume_tryon and topped up only by
-// verified purchases). We hydrate from the server via syncFromMembership and
-// decrement optimistically so the UI feels instant; the server value always wins.
+// The balance lives on the server's membership row (decremented atomically by
+// consume_tryon, topped up only by verified purchases) and is read from
+// useMembershipStore: there is no second copy to keep in step.
 export { FREE_CREDITS }
 
-interface CreditsState {
-  balance: number
-  setBalance: (n: number) => void
-  syncFromMembership: (m: Membership | null) => void
-  consume: () => boolean   // optimistic local decrement; false = no credits left
-  remaining: () => number
+/** Premium (admin-granted, plan='premium') is unlimited: never gated on credits. */
+export function isPremium(m: Membership | null | undefined): boolean {
+  return !!m && (m.isPremium === true || m.plan === 'premium')
 }
 
-export const useCreditsStore = create<CreditsState>()((set, get) => ({
-  balance: FREE_CREDITS,
-  setBalance: (n) => set({ balance: Math.max(0, n) }),
-  syncFromMembership: (m) => {
-    if (m && typeof m.creditsBalance === 'number') set({ balance: Math.max(0, m.creditsBalance) })
-  },
-  consume: () => {
-    const { balance } = get()
-    if (balance <= 0) return false
-    set({ balance: balance - 1 })
-    return true
-  },
-  remaining: () => get().balance,
-}))
+/** Credits left, or null until the membership has loaded. */
+export function creditsLeft(m: Membership | null | undefined): number | null {
+  return m && typeof m.creditsBalance === 'number' ? Math.max(0, m.creditsBalance) : null
+}
 
 // ─── Try-on result cache ──────────────────────────────────────────────────────
 // In-memory only (no persistence). De-dupes repeat (photo + garment) within a

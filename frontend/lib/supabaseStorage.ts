@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { blobToDataUri } from './dataUri'
 import type { Measurements, ColorAnalysisResult, SizeResult, VerdictResult, StyleReport } from './types'
 
 // Columns added by supabase/migrations/cloud-only-history.sql. If the migration
@@ -433,13 +434,7 @@ export async function downloadUserPhoto(photoPath: string): Promise<string | nul
     if (error || !data?.signedUrl) return null
     const res = await fetch(data.signedUrl)
     if (!res.ok) return null
-    const blob = await res.blob()
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
+    return await blobToDataUri(await res.blob())
   } catch {
     return null
   }

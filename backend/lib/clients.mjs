@@ -1,4 +1,4 @@
-import { serviceDb } from './db.mjs'
+import { serviceDb, isMissingSchema } from './db.mjs'
 
 // =============================================================================
 // B2B stores (supabase/migrations/b2b-integration.sql, on the admin schema
@@ -10,17 +10,21 @@ import { serviceDb } from './db.mjs'
 // store_id), so the store app and the API share one vocabulary.
 // =============================================================================
 
-const missingSchema = (msg) => !!msg && /does not exist|schema cache|could not find the (table|function)/i.test(msg)
-
 export const CLIENT_FEATURES = ['tryon', 'style', 'size']
 
-// b2b_stores.status + company status → what the app shows (same rules as
-// store_effective_status() in SQL).
-function effectiveStatus(store, company) {
-  if (company?.status === 'inactive' || store.status === 'inactive') return 'revoked'
-  if (store.status === 'suspended') return 'suspended'
-  if (store.trial_ends_at && !store.renewal_at) return 'trial'
-  return 'active'
+/**
+ * A store's status and spendable credits, from the database (one implementation:
+ * the b2b_store_credits view, supabase/migrations/b2b-store-credits.sql). Before
+ * that migration: status from store_effective_status() and the raw balance.
+ */
+async function storeState(db, storeId, rawBalance) {
+  const { data, error } = await db.from('b2b_store_credits')
+    .select('effective_status, usable_credits').eq('store_id', storeId).maybeSingle()
+  if (!error && data) return { status: data.effective_status, usableCredits: data.usable_credits }
+  if (error && !isMissingSchema(error)) throw error
+  const { data: status, error: sErr } = await db.rpc('store_effective_status', { p_store_id: storeId })
+  if (sErr) throw sErr
+  return { status, usableCredits: rawBalance }
 }
 
 /**
@@ -34,14 +38,14 @@ export async function getClientContext(userId) {
 
   const { data: storeId, error } = await db.rpc('store_for_user', { p_user_id: userId })
   if (error) {
-    if (missingSchema(error.message)) return null
+    if (isMissingSchema(error)) return null
     throw error
   }
   if (!storeId) return null
 
   const [{ data: store, error: sErr }, { data: rows, error: fErr }] = await Promise.all([
     db.from('b2b_stores')
-      .select('store_id, company_id, status, credits_balance, trial_ends_at, renewal_at, b2b_companies(status)')
+      .select('store_id, company_id, credits_balance')
       .eq('store_id', storeId).maybeSingle(),
     db.from('b2b_store_features').select('feature, enabled').eq('store_id', storeId),
   ])
@@ -49,14 +53,15 @@ export async function getClientContext(userId) {
   if (fErr) throw fErr
   if (!store) return null
 
+  const state = await storeState(db, store.store_id, store.credits_balance ?? 0)
   const features = Object.fromEntries(CLIENT_FEATURES.map((f) => [f, true]))
   for (const r of rows ?? []) features[r.feature] = r.enabled !== false
 
   return {
     clientId: store.store_id,
     companyId: store.company_id ?? null,
-    status: effectiveStatus(store, store.b2b_companies),
-    creditsBalance: store.credits_balance ?? 0,
+    status: state.status,
+    creditsBalance: state.usableCredits,
     features,
   }
 }

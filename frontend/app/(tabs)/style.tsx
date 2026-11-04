@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, ScrollView, SafeAreaView,
-  ActivityIndicator, StyleSheet, Animated, Easing, Platform,
+  ActivityIndicator, StyleSheet, Animated, Easing,
 } from 'react-native'
-import * as FileSystem from 'expo-file-system/legacy'
 import { useRouter } from 'expo-router'
 import { useProfileStore } from '../../lib/store'
 import { fetchColorAnalysis, fetchStyleAnalysis } from '../../lib/api'
 import { supabase } from '../../lib/supabaseClient'
 import { upsertProfile } from '../../lib/supabaseStorage'
+import { imageToDataUri } from '../../lib/dataUri'
+import { isFallback, isRetryable } from '../../lib/aiOutcome'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
 import { Icon, IconName } from '../../lib/ui'
 import type { ColorSwatch, StyleReport } from '../../lib/types'
@@ -99,20 +100,7 @@ export default function StyleScreen() {
   const report = profile.styleReport
   const hasPhoto = !!profile.photoUri
 
-  async function readPhoto(): Promise<string> {
-    const uri = profile.photoUri!
-    if (uri.startsWith('data:')) return uri
-    if (Platform.OS === 'web') {
-      const blob = await (await fetch(uri)).blob()
-      return new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.readAsDataURL(blob)
-      })
-    }
-    const raw = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
-    return `data:image/jpeg;base64,${raw}`
-  }
+  const readPhoto = () => imageToDataUri(profile.photoUri!)
 
   async function styleMe() {
     if (!hasPhoto || loading) return
@@ -124,6 +112,13 @@ export default function StyleScreen() {
         fetchColorAnalysis(photoBase64),
         fetchStyleAnalysis({ photoBase64, measurements: profile.measurements ?? undefined }),
       ])
+      // A stand-in report (stylist unavailable) is never saved as the user's style.
+      if (isFallback(color) || isFallback(style)) {
+        setError(isRetryable(color) || isRetryable(style)
+          ? 'The stylist is busy — please try again in a moment.'
+          : 'Style analysis isn’t available right now — please try again later.')
+        return
+      }
       const next: StyleReport = { color, style, createdAt: new Date().toISOString() }
       profile.setStyleReport(next)
       const { data } = await supabase.auth.getSession()

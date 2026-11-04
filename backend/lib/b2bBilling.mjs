@@ -79,7 +79,15 @@ async function loadStore(supabase, storeId) {
   }
   if (error) throw error
   if (!data) throw new BillingError(404, 'Store not found.', 'unknown_store')
-  return { ...data, topup_credits: data.topup_credits ?? 0, noMigration }
+  // Spendable credits from the database (b2b-store-credits.sql); null before that migration.
+  let credits = null
+  if (!noMigration) {
+    const { data: c, error: cErr } = await supabase.from('b2b_store_credits')
+      .select('plan_credits, topup_credits, usable_credits').eq('store_id', storeId).maybeSingle()
+    if (cErr && !isMissingSchema(cErr)) throw cErr
+    credits = c ?? null
+  }
+  return { ...data, topup_credits: data.topup_credits ?? 0, noMigration, credits }
 }
 
 async function loadCatalog(supabase, currentPlanId) {
@@ -157,14 +165,16 @@ function eligibility(store, catalog, byExpiry) {
   return { plans, packs }
 }
 
-// Plan credits of a cycle that has ended are already gone (the DB expires
-// them lazily), so report them as 0 even before that runs.
+// The split comes from the b2b_store_credits view (plan credits are 0 once the
+// cycle has ended). Before that migration: the raw balance, split as stored.
 function balances(store) {
+  if (store.credits) {
+    const c = store.credits
+    return { planCredits: c.plan_credits, topupCredits: c.topup_credits, totalCredits: c.usable_credits }
+  }
   const total = store.credits_balance ?? 0
   const topup = Math.min(store.topup_credits ?? 0, total)
-  const ended = store.renewal_at && new Date(store.renewal_at).getTime() <= Date.now()
-  const plan = ended ? 0 : total - topup
-  return { planCredits: plan, topupCredits: topup, totalCredits: plan + topup }
+  return { planCredits: total - topup, topupCredits: topup, totalCredits: total }
 }
 
 async function recentPayments(supabase, storeId) {

@@ -1,12 +1,11 @@
 import { serviceDb } from './db.mjs'
+import { FEATURES } from './features.mjs'
 
-/** Credits consumed per AI action (size assistant is free). */
-export const CREDIT_COSTS = {
-  tryon: 1,
-  style: 1,
-  color: 1,
-  size: 0,
-}
+// Website-embed partner credits (companies + credit_ledger). Spent through
+// lib/spend.mjs, which also refunds them when the AI call fails.
+
+/** Credits an embed partner spends per AI action (from lib/features.mjs). */
+export const CREDIT_COSTS = Object.fromEntries(Object.entries(FEATURES).map(([k, f]) => [k, f.partnerCost]))
 
 const INSUFFICIENT_COMPANY = 'This partner has used all their Atelier credits.'
 const INSUFFICIENT_USER = 'You have reached your try-on limit for this store.'
@@ -174,6 +173,7 @@ export async function consumeCredits({
     }
   }
 
+  let ledgerId = null
   const admin = serviceDb()
   if (admin) {
     const newBalance = company.credit_balance - cost
@@ -185,24 +185,27 @@ export async function consumeCredits({
 
     if (updateError) throw updateError
 
-    const { error: insertError } = await admin.from('credit_ledger').insert({
+    const { data: ledgerRow, error: insertError } = await admin.from('credit_ledger').insert({
       company_id: companyId,
       user_id: userId ?? null,
       guest_id: guestId ?? null,
       referrer_origin: normalizeOrigin(referrerOrigin) ?? referrerOrigin ?? '',
       action,
       credits: cost,
-    })
+    }).select('id').single()
     if (insertError) {
       await admin.from('companies').update({ credit_balance: company.credit_balance }).eq('id', companyId)
       throw insertError
     }
 
     company.credit_balance = newBalance
+    ledgerId = ledgerRow?.id ?? null
   } else {
     company.credit_balance -= cost
     memoryCompanies.set(companyId, company)
+    ledgerId = `mem-${memoryLedger.length}-${Date.now()}`
     memoryLedger.push({
+      id: ledgerId,
       company_id: companyId,
       user_id: userId ?? null,
       guest_id: guestId ?? null,
@@ -215,6 +218,7 @@ export async function consumeCredits({
   return {
     ok: true,
     charged: cost,
+    ledgerId,
     status: {
       enabled: true,
       companyId: company.id,
@@ -226,6 +230,44 @@ export async function consumeCredits({
       userRemaining: userLimit === -1 ? null : Math.max(0, userLimit - userUsed - cost),
       referrerOrigin: normalizeOrigin(referrerOrigin) ?? referrerOrigin ?? null,
     },
+  }
+}
+
+/**
+ * Undo one consumeCredits charge (the AI call failed): delete its ledger row,
+ * so the per-user limit counts it no more, and give the credits back. The
+ * ledger only holds positive amounts, so a refund removes the row instead of
+ * adding a negative one. Best-effort: never throws.
+ */
+export async function refundCredits({ companyId, ledgerId, credits }) {
+  if (!companyId || !ledgerId || !(credits > 0)) return
+  try {
+    const admin = serviceDb()
+    if (!admin) {
+      const i = memoryLedger.findIndex((row) => row.id === ledgerId)
+      if (i === -1) return
+      memoryLedger.splice(i, 1)
+      const mem = memoryCompanies.get(companyId)
+      if (mem) mem.credit_balance += credits
+      return
+    }
+    const { data: removed, error: delErr } = await admin
+      .from('credit_ledger').delete().eq('id', ledgerId).select('id')
+    if (delErr) throw delErr
+    if (!removed?.length) return // already refunded
+    // Optimistic add-back, as in consumeCredits: retry if a concurrent charge moved the balance.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: row, error } = await admin.from('companies').select('credit_balance').eq('id', companyId).maybeSingle()
+      if (error || !row) throw error ?? new Error('unknown company')
+      const { data: updated, error: upErr } = await admin.from('companies')
+        .update({ credit_balance: row.credit_balance + credits, updated_at: new Date().toISOString() })
+        .eq('id', companyId).eq('credit_balance', row.credit_balance).select('id')
+      if (upErr) throw upErr
+      if (updated?.length) return
+    }
+    console.warn(`[Atelier] refundCredits: balance for ${companyId} kept changing; ledger row removed, balance not restored`)
+  } catch (err) {
+    console.warn('[Atelier] refundCredits failed:', err?.message)
   }
 }
 

@@ -3,10 +3,12 @@ import {
   View, Text, TextInput, TouchableOpacity, Image, StyleSheet,
   SafeAreaView, ScrollView, ActivityIndicator, Alert, Platform,
 } from 'react-native'
-import * as FileSystem from 'expo-file-system/legacy'
 import { pickImageDataUri } from '../../lib/imageInput'
 import { useRouter, useFocusEffect } from 'expo-router'
-import { useProfileStore, useGarmentStore, useMembershipStore, useCreditsStore, useTryOnCacheStore, tryOnCacheKey } from '../../lib/store'
+import { useProfileStore, useGarmentStore, useMembershipStore, useTryOnCacheStore, tryOnCacheKey, isPremium } from '../../lib/store'
+import { imageToDataUri } from '../../lib/dataUri'
+import { isFallback, isRetryable } from '../../lib/aiOutcome'
+import { runTryOnAttempt } from '../../lib/tryOnAttempt'
 import { PurchaseOptions } from '../../lib/purchaseOptions'
 import {
   fetchGarmentFromUrl, fetchTryOn, fetchSizeAssist,
@@ -151,7 +153,6 @@ export default function HomeScreen() {
   const profile       = useProfileStore()
   const garmentStore  = useGarmentStore()
   const membershipStore = useMembershipStore()
-  const credits       = useCreditsStore()
   const tryOnCache    = useTryOnCacheStore()
   const router        = useRouter()
 
@@ -163,7 +164,7 @@ export default function HomeScreen() {
   // admin premium upgrade / credit change reflects on return, without a reinstall.
   useFocusEffect(
     useCallback(() => {
-      membershipStore.refresh().then((m) => credits.syncFromMembership(m))
+      membershipStore.refresh()
     }, []), // eslint-disable-line react-hooks/exhaustive-deps
   )
 
@@ -288,19 +289,7 @@ export default function HomeScreen() {
   }
 
   async function readUserPhoto(): Promise<string | undefined> {
-    if (!profile.photoUri) return undefined
-    if (profile.photoUri.startsWith('data:')) return profile.photoUri
-    if (Platform.OS === 'web') {
-      const res = await fetch(profile.photoUri)
-      const blob = await res.blob()
-      return new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.readAsDataURL(blob)
-      })
-    }
-    const raw = await FileSystem.readAsStringAsync(profile.photoUri, { encoding: FileSystem.EncodingType.Base64 })
-    return `data:image/jpeg;base64,${raw}`
+    return profile.photoUri ? imageToDataUri(profile.photoUri) : undefined
   }
 
   function gateCredits(): boolean {
@@ -312,7 +301,7 @@ export default function HomeScreen() {
     // free allowance to 3). Now we block only when the real balance is genuinely 0.
     const m = membershipStore.membership
     // Premium (admin-granted, plan='premium') is unlimited — never gated on credits.
-    if (m?.isPremium || m?.plan === 'premium') { setCreditNote(null); return true }
+    if (isPremium(m)) { setCreditNote(null); return true }
     const outOfCredits = !!m && typeof m.creditsBalance === 'number' && m.creditsBalance <= 0
     if (outOfCredits) {
       // Out of credits → reveal the purchase options inline (no dead block).
@@ -384,56 +373,60 @@ export default function HomeScreen() {
     setAction('tryon', 'loading')
     setTryOnResult(null)
     setPaywall(false)
-    try {
-      const r = await fetchTryOn(garment.imageBase64, garment.name ?? 'garment', userB64, {
-        inputSource: garment.source === 'url' ? 'link' : 'screenshot',
-        productUrl: garment.sourceUrl,
-        garmentBrand: garment.brand,
-      })
-      if (r.membership) { membershipStore.setMembership(r.membership); credits.syncFromMembership(r.membership) }
-      if (r.paywall) { postEvent('paywall_viewed', { metadata: { feature: 'tryon' } }); setPaywall(true); setCreditNote(r.message ?? "You're out of credits. Buy more to keep generating:"); setAction('tryon', 'error'); return }
-      setTryOnResult(r)
-      setAction('tryon', r.fallback ? 'error' : 'done')
-      if (r.fallback && r.message?.toLowerCase().includes('busy')) startRetryCountdown('tryon')
-      if (currentCheckId.current) garmentStore.updateCheck(currentCheckId.current, { tryOnResult: r })
-      // Cache successful, real generations so re-running the same photo+garment is free.
-      if (!r.fallback && r.image && !r.demo && cacheKey && currentCheckId.current) {
-        tryOnCache.save(cacheKey, currentCheckId.current)
-      }
-      if (!r.fallback) {
-        membershipStore.refresh()
-        // Persist the fitting to Supabase so it survives reloads, syncs across
-        // devices, and shows up in the admin dashboard. Best-effort.
-        // Debug stubs are never written to the cloud (not a real generation).
-        if (r.image && !r.demo && !r.debug) {
-          const checkId = currentCheckId.current
-          getCurrentUserId().then((userId) => {
-            if (!userId || !r.image) return
-            saveTryOnToCloud(userId, {
-              productId: checkId ?? Date.now().toString(),
-              productName: garment.name ?? 'Garment',
-              imageDataUri: r.image,
-              garmentDataUri: garment.imageBase64,
-              garmentBrand: garment.brand,
-              demo: r.demo,
-              retailerProductUrl: garment.sourceUrl,
-              garmentSource: garment.sourceUrl ?? 'upload',
-              // Carry any size/verdict already run for this garment into the one row.
-              sizeResult, verdictResult,
-            })
-              .then(() => setCloudError(null))
-              .catch((e) => {
-                console.error('[Atelier] try-on cloud save failed:', e)
-                cloudRetry.current = () => runTryOn()
-                setCloudError("Couldn't save this fitting to the cloud.")
-              })
-          })
-        }
-      }
-    } catch (e: any) {
-      setTryOnResult({ fallback: true, message: e.message ?? 'Try-on failed.' })
+    const checkId = currentCheckId.current
+    const g = garment
+    const { outcome, saved } = await runTryOnAttempt({
+      call: () => fetchTryOn(g.imageBase64, g.name ?? 'garment', userB64, {
+        inputSource: g.source === 'url' ? 'link' : 'screenshot',
+        productUrl: g.sourceUrl,
+        garmentBrand: g.brand,
+      }),
+      applyBalance: (r) => { if (r.membership) membershipStore.setMembership(r.membership) },
+      // Saved to Supabase so it survives reloads, syncs across devices, and shows
+      // in the admin dashboard. Guests (no account) keep it in-session only.
+      save: async (image, r) => {
+        const userId = await getCurrentUserId()
+        if (!userId) return
+        await saveTryOnToCloud(userId, {
+          productId: checkId ?? Date.now().toString(),
+          productName: g.name ?? 'Garment',
+          imageDataUri: image,
+          garmentDataUri: g.imageBase64,
+          garmentBrand: g.brand,
+          demo: r.demo,
+          retailerProductUrl: g.sourceUrl,
+          garmentSource: g.sourceUrl ?? 'upload',
+          // Carry any real size/verdict already run for this garment into the one row.
+          sizeResult: isFallback(sizeResult) ? undefined : sizeResult ?? undefined,
+          verdictResult: isFallback(verdictResult) ? undefined : verdictResult ?? undefined,
+        })
+      },
+    })
+
+    if (outcome.kind === 'paywall') {
+      postEvent('paywall_viewed', { metadata: { feature: 'tryon' } })
+      setPaywall(true)
+      setCreditNote(outcome.message)
       setAction('tryon', 'error')
+      return
     }
+    const shown: TryOnResult = outcome.kind === 'image' ? outcome.result : { ...outcome.result, fallback: true, message: outcome.message }
+    setTryOnResult(shown)
+    setAction('tryon', outcome.kind === 'image' ? 'done' : 'error')
+    if (outcome.kind === 'failed' && outcome.retryable) startRetryCountdown('tryon')
+    if (checkId) garmentStore.updateCheck(checkId, { tryOnResult: shown })
+    if (outcome.kind === 'image') {
+      // Cache real generations so re-running the same photo+garment is free.
+      if (!shown.demo && cacheKey && checkId) tryOnCache.save(cacheKey, checkId)
+      membershipStore.refresh()
+    }
+    saved
+      ?.then(() => setCloudError(null))
+      .catch((e) => {
+        console.error('[Atelier] try-on cloud save failed:', e)
+        cloudRetry.current = () => runTryOn()
+        setCloudError("Couldn't save this fitting to the cloud.")
+      })
   }
 
   async function runSize() {
@@ -456,7 +449,8 @@ export default function HomeScreen() {
       console.log('[Atelier] size result received:', { checkId: currentCheckId.current, size: r.size, confidence: r.confidence })
       setSizeResult(r)
       setAction('size', 'done')
-      if (r.caveat === 'AI analysis unavailable right now.') startRetryCountdown('size')
+      // A stand-in answer is shown but never saved as the garment's size.
+      if (isFallback(r)) { if (isRetryable(r)) startRetryCountdown('size'); return }
       if (currentCheckId.current) garmentStore.updateCheck(currentCheckId.current, { sizeResult: r })
       persistResults({ sizeResult: r }, 'size prediction')
     } catch (e: any) {
@@ -488,7 +482,8 @@ export default function HomeScreen() {
       console.log('[Atelier] verdict result received:', { checkId: currentCheckId.current, call: r.call })
       setVerdictResult(r)
       setAction('verdict', 'done')
-      if (r.whyItWorks === '—') startRetryCountdown('verdict')
+      // A stand-in answer is shown but never saved as the garment's verdict.
+      if (isFallback(r)) { if (isRetryable(r)) startRetryCountdown('verdict'); return }
       if (currentCheckId.current) garmentStore.updateCheck(currentCheckId.current, { verdictResult: r })
       persistResults({ verdictResult: r }, 'buy verdict')
     } catch (e: any) {

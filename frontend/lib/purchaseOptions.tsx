@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, 
 import { createPayment, getPaymentStatus, fetchPricing } from './api'
 import { openCashfreeCheckout } from './cashfreeCheckout'
 import { PRICING_OPTIONS, inr } from './pricing'
-import { useCreditsStore, useMembershipStore } from './store'
+import { useMembershipStore } from './store'
 import type { Membership, PricingOption, PurchaseType } from './types'
 import { Colors, Typography, Space, Radius } from './theme'
 
@@ -29,7 +29,6 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
   const [gridWidth, setGridWidth] = useState(0)
   const stack = (gridWidth || width) < 460
   const [busy, setBusy] = useState<PurchaseType | null>(null)
-  const credits = useCreditsStore()
   const membershipStore = useMembershipStore()
   const recommended = options.find((o) => o.recommended)?.type ?? options[Math.min(1, options.length - 1)]?.type
 
@@ -46,7 +45,6 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
       const status = await getPaymentStatus(order.orderId) // server verifies + grants
       if (status.paid && status.membership) {
         membershipStore.setMembership(status.membership)
-        credits.syncFromMembership(status.membership)      // balance set by the SERVER
         Alert.alert('Credits added', `+${order.credits} credit${order.credits > 1 ? 's' : ''} added — you now have ${status.membership.creditsBalance}.`)
         onPurchased?.(status.membership)
       } else {

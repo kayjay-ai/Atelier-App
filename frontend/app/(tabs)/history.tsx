@@ -4,7 +4,7 @@ import {
   View, Text, FlatList, Image, TouchableOpacity, StyleSheet, SafeAreaView,
   ScrollView, Platform, Linking, ActivityIndicator, Modal,
 } from 'react-native'
-import { useGarmentStore, useMembershipStore, useProfileStore } from '../../lib/store'
+import { useGarmentStore, useMembershipStore, useProfileStore, isPremium } from '../../lib/store'
 import { getCurrentUserId, listTryOnsFromCloud, deleteTryOnFromCloud } from '../../lib/supabaseStorage'
 import { downloadImage as nativeSave, shareImage } from '../../lib/shareImage'
 import { Colors, Typography, Space, Radius, Shadow } from '../../lib/theme'
@@ -258,7 +258,7 @@ export default function HistoryScreen() {
   const { membership } = useMembershipStore()
   // Clean (un-watermarked) exports for premium or anyone who has bought credits.
   const plan = membership?.plan ?? null
-  const clean = !!membership?.isPremium || (plan !== null && plan !== 'free')
+  const clean = isPremium(membership) || (plan !== null && plan !== 'free')
 
   const [userId, setUserId] = useState<string | null>(null)
   const [cloudChecks, setCloudChecks] = useState<GarmentCheck[]>([])

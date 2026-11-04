@@ -6,7 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
 import { Icon, IconName, bottomTabOptions } from '../../lib/ui'
 import { useAccountStore } from '../../lib/account'
-import { useCreditsStore, useMembershipStore, useProfileStore } from '../../lib/store'
+import { useMembershipStore, useProfileStore, isPremium, creditsLeft } from '../../lib/store'
 import { supabase } from '../../lib/supabaseClient'
 
 // ─── B2C consumer app shell (spec §3) ─────────────────────────────────────────
@@ -28,9 +28,9 @@ function TabIcon({ icon, active }: { icon: IconName; active: boolean }) {
 }
 
 function CreditCounter({ signedIn }: { signedIn: boolean }) {
-  const balance = useCreditsStore((s) => s.balance)
   const membership = useMembershipStore((s) => s.membership)
-  const premium = !!membership?.isPremium || membership?.plan === 'premium'
+  const premium = isPremium(membership)
+  const balance = creditsLeft(membership) // null until loaded
 
   if (!signedIn) {
     return (
@@ -40,17 +40,17 @@ function CreditCounter({ signedIn }: { signedIn: boolean }) {
       </TouchableOpacity>
     )
   }
-  const empty = !premium && balance <= 0
+  const empty = !premium && balance !== null && balance <= 0
   return (
     <TouchableOpacity
       style={[h.pill, empty && h.pillEmpty]}
       onPress={() => router.navigate('/(tabs)/premium')}
       accessibilityRole="button"
-      accessibilityLabel={premium ? 'Unlimited credits. Open Premium.' : `${balance} credits left. Open Premium.`}
+      accessibilityLabel={premium ? 'Unlimited credits. Open Premium.' : balance === null ? 'Credits. Open Premium.' : `${balance} credits left. Open Premium.`}
     >
       <Icon name="star" size={14} color={empty ? Colors.error : Colors.secondary} />
       <Text style={[h.pillText, empty && { color: Colors.error }]}>
-        {premium ? 'Unlimited' : `${balance} credit${balance === 1 ? '' : 's'}`}
+        {premium ? 'Unlimited' : balance === null ? 'Credits' : `${balance} credit${balance === 1 ? '' : 's'}`}
       </Text>
     </TouchableOpacity>
   )
@@ -88,7 +88,7 @@ export default function TabLayout() {
       setUserId(id)
       if (!id) return
       useProfileStore.getState().hydrate(id).catch(() => {})
-      useMembershipStore.getState().refresh().then((m) => useCreditsStore.getState().syncFromMembership(m))
+      useMembershipStore.getState().refresh()
     }
     supabase.auth.getSession().then(({ data }) => sync(data.session?.user?.id ?? null))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {

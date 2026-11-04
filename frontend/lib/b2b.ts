@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from './supabaseClient'
 import { dataUriToBytes, uuidv4 } from './supabaseStorage'
+import { blobToDataUri } from './dataUri'
 import { useAccountStore } from './account'
 import { DEMO_CLIENT_ID, demoFolders } from './demoCompany'
 import { postEvent } from './api'
@@ -229,13 +230,7 @@ export async function storedImageDataUri(path: string): Promise<string> {
   if (error || !data?.signedUrl) throw error ?? new Error('Could not open the stored photo.')
   const res = await fetch(data.signedUrl)
   if (!res.ok) throw new Error(`Could not download the stored photo (${res.status}).`)
-  const blob = await res.blob()
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
+  return blobToDataUri(await res.blob())
 }
 
 /**

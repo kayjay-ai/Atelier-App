@@ -10,6 +10,8 @@ import {
 } from '../../lib/b2b'
 import { fetchTryOn, fetchSizeAssist } from '../../lib/api'
 import { pickImageDataUri } from '../../lib/imageInput'
+import { isFallback, isRetryable } from '../../lib/aiOutcome'
+import { runTryOnAttempt } from '../../lib/tryOnAttempt'
 import { downloadImage, shareImage } from '../../lib/shareImage'
 import { Colors, Typography, Space, Radius, Shadow } from '../../lib/theme'
 import { Icon, PillButton } from '../../lib/ui'
@@ -147,32 +149,32 @@ export default function StoreHomeScreen() {
     }
     setPhase('generating')
     setFailure(null)
+    let userPhoto: string
     try {
-      const userPhoto = await storedImageDataUri(customer.photoPath)
-      reportGarmentSelected(garment.name)
-      const r = await fetchTryOn(garment.dataUri, garment.name || 'garment', userPhoto, { inputSource: 'gallery' })
-      if (r.client) setCreditsBalance(r.client.creditsBalance)
-      if (r.paywall) {
-        refreshAccount(true)
-        setFailure({ message: 'Credits used up — upgrade your plan or add credits.', toPlan: true })
-        setPhase('failed')
-        return
-      }
-      if (r.fallback || !r.image) {
-        // The server refunds the credit when generation fails.
-        refreshAccount(true)
-        setFailure({ message: r.message ?? 'The try-on could not be generated. No credit was used.' })
-        setPhase('failed')
-        return
-      }
-      setResultImage(r.image)
-      setPhase('result')
-      saveResult(r.image)
+      userPhoto = await storedImageDataUri(customer.photoPath)
     } catch (e: any) {
-      refreshAccount(true)
-      setFailure({ message: e?.message ?? 'The try-on could not be generated. No credit was used.' })
+      setFailure({ message: e?.message ?? 'Could not open the customer photo.' })
       setPhase('failed')
+      return
     }
+    reportGarmentSelected(garment.name)
+    const g = garment
+    const { outcome } = await runTryOnAttempt({
+      call: () => fetchTryOn(g.dataUri, g.name || 'garment', userPhoto, { inputSource: 'gallery' }),
+      applyBalance: (r) => { if (r.client) setCreditsBalance(r.client.creditsBalance) },
+      save: (image) => saveResult(image), // into the customer's folder; reports its own errors
+    })
+    if (outcome.kind !== 'image') {
+      // The server refunds the credit when generation fails.
+      refreshAccount(true)
+      setFailure(outcome.kind === 'paywall'
+        ? { message: 'Credits used up — upgrade your plan or add credits.', toPlan: true }
+        : { message: outcome.message })
+      setPhase('failed')
+      return
+    }
+    setResultImage(outcome.image)
+    setPhase('result')
   }
 
   async function saveResult(image: string) {
@@ -205,6 +207,12 @@ export default function StoreHomeScreen() {
         garmentImageBase64: garment.dataUri,
         garmentName: garment.name,
       })
+      // A stand-in answer is never saved into the customer's folder.
+      if (isFallback(r)) {
+        setSizeError(isRetryable(r) ? 'Size Assist is busy — try again in a moment.' : 'Size Assist isn’t available right now.')
+        setSizeState('error')
+        return
+      }
       setSizeResult(r)
       setSizeState('done')
       if (onResult) await saveSizeOnResult(onResult, r)

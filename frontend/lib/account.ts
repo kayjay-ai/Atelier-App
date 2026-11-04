@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from './supabaseClient'
-import type { Account, Client, ClientFeature, Plan, Store } from './types'
+import type { Account, Client, ClientFeature, ClientStatus, Plan, Store } from './types'
 import { isDemoCompanyEmail, demoAccount, demoReady, DEMO_CLIENT_ID } from './demoCompany'
 import { startStoreSession, type StoreSession } from './api'
 import { ensureDeviceRegistered } from './device'
@@ -20,8 +20,8 @@ const isMissingTable = (msg?: string) =>
 
 // Never select store_password_hash — the app has no use for it.
 const STORE_SELECT =
-  'store_id, store_name, store_address, city, state, pincode, subscription_plan, status, credits_balance, ' +
-  'trial_ends_at, renewal_at, b2b_companies(company_name, brand_name, logo_url, gstin, manager_name, manager_email, primary_contact, status)'
+  'store_id, store_name, store_address, city, state, pincode, subscription_plan, credits_balance, ' +
+  'trial_ends_at, renewal_at, b2b_companies(company_name, brand_name, logo_url, gstin, manager_name, manager_email, primary_contact)'
 
 function toPlan(row: any): Plan {
   return {
@@ -34,16 +34,23 @@ function toPlan(row: any): Plan {
   }
 }
 
-// b2b_stores.status + company status → what the app shows (matches
-// store_effective_status() in SQL and the server).
-function toStatus(row: any): Client['status'] {
-  if (row.b2b_companies?.status === 'inactive' || row.status === 'inactive') return 'revoked'
-  if (row.status === 'suspended') return 'suspended'
-  if (row.trial_ends_at && !row.renewal_at) return 'trial'
-  return 'active'
+/**
+ * The store's status and what it can spend now, from the database: the
+ * b2b_store_credits view (supabase/migrations/b2b-store-credits.sql) holds both
+ * rules, for the app and the API alike. Before that migration: the status from
+ * store_effective_status() and the raw balance.
+ */
+async function storeState(row: any): Promise<{ status: ClientStatus; usableCredits: number }> {
+  const { data, error } = await supabase.from('b2b_store_credits')
+    .select('effective_status, usable_credits').eq('store_id', row.store_id).maybeSingle<any>()
+  if (!error && data) return { status: data.effective_status, usableCredits: data.usable_credits }
+  if (error && !isMissingTable(error.message)) throw error
+  const { data: status, error: sErr } = await supabase.rpc('store_effective_status', { p_store_id: row.store_id })
+  if (sErr) throw sErr
+  return { status: status as ClientStatus, usableCredits: row.credits_balance ?? 0 }
 }
 
-function toClient(row: any): Client {
+function toClient(row: any, state: { status: ClientStatus; usableCredits: number }): Client {
   const c = row.b2b_companies ?? {}
   const address = [row.store_address, row.city, row.state, row.pincode].filter(Boolean).join(', ')
   return {
@@ -58,23 +65,16 @@ function toClient(row: any): Client {
     billingAddress: address || null,
     planId: row.subscription_plan ?? null,
     creditsBalance: row.credits_balance ?? 0,
-    topupCredits: typeof row.topup_credits === 'number' ? row.topup_credits : null,
-    status: toStatus(row),
+    usableCredits: state.usableCredits,
+    status: state.status,
     trialEndsAt: row.trial_ends_at ?? null,
     renewalAt: row.renewal_at ?? null,
   }
 }
 
-/**
- * Credits the store can spend right now. Once the cycle's renewal date passes,
- * its plan credits have expired (the DB drops them lazily), so only top-up
- * credits are left — same rule as the server's billing overview.
- */
+/** Credits the store can spend right now (from the database; see storeState). */
 export function usableCredits(client: Client): number {
-  const total = client.creditsBalance
-  if (client.topupCredits == null) return total // migration not applied: no split known
-  const ended = !!client.renewalAt && Date.parse(client.renewalAt) <= Date.now()
-  return ended ? Math.min(client.topupCredits, total) : total
+  return client.usableCredits ?? client.creditsBalance
 }
 
 /** Resolve the signed-in user's account. Throws on a real (network/DB) failure. */
@@ -87,16 +87,14 @@ export async function fetchAccount(userId: string, email?: string | null): Promi
   const pattern = email.trim().replace(/[\\%_]/g, (ch) => `\\${ch}`) // ilike = case-insensitive, exact
   const byEmail = (cols: string) =>
     supabase.from('b2b_stores').select(cols).ilike('store_email', pattern).maybeSingle<any>()
-  let { data: row, error } = await byEmail(`${STORE_SELECT}, topup_credits`)
-  // b2b-payments.sql not applied yet → no topup_credits column; read without it.
-  if (error && /topup_credits/i.test(error.message)) ({ data: row, error } = await byEmail(STORE_SELECT))
+  const { data: row, error } = await byEmail(STORE_SELECT)
   if (error) {
     if (isMissingTable(error.message)) return { type: 'b2c_customer' }
     throw error
   }
   if (!row) return { type: 'b2c_customer' }
 
-  const client = toClient(row)
+  const client = toClient(row, await storeState(row))
   const [plansRes, featuresRes, storesRes] = await Promise.all([
     supabase.from('b2b_plans').select('*').order('price_inr'),
     supabase.from('b2b_store_features').select('feature, enabled').eq('store_id', client.id),
@@ -206,10 +204,10 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
   setCreditsBalance: (n) => {
     const account = get().account
     if (account?.type !== 'b2b_company') return
+    // The server reports the balance right after a debit, which first drops any
+    // expired plan credits, so at that moment the whole balance is spendable.
     const creditsBalance = Math.max(0, n)
-    // Spending takes plan credits first, so top-ups only shrink to fit the total.
-    const topupCredits = account.client.topupCredits == null ? account.client.topupCredits : Math.min(account.client.topupCredits, creditsBalance)
-    set({ account: { ...account, client: { ...account.client, creditsBalance, topupCredits } } })
+    set({ account: { ...account, client: { ...account.client, creditsBalance, usableCredits: creditsBalance } } })
   },
   clear: () => set({ userId: null, email: null, account: null, session: null, loadedAt: 0 }),
   dismissNotice: () => {

@@ -1,4 +1,3 @@
-import 'dotenv/config'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getSettings, logAppEvent } from '../lib/clients.mjs'
@@ -135,8 +134,11 @@ export async function runDailyJob() {
 }
 
 // `npm run job:daily` (from the repo root)
+// Loads .env only when run as a script: importing this module (routes/admin.mjs)
+// must not change the environment.
 if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
-  runDailyJob()
+  import('dotenv/config')
+    .then(() => runDailyJob())
     .then((r) => process.exit(Object.values(r).some((v) => v && typeof v === 'object' && v.error) ? 1 : 0))
     .catch((err) => { console.error(err); process.exit(1) })
 }
