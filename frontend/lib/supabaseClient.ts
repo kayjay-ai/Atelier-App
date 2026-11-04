@@ -4,15 +4,17 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? ''
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
-// Cloud-only: without these, nothing can be saved or loaded. Fail loudly.
+// Cloud-only: without these, nothing can be saved or loaded, so fail loudly
+// (createClient would throw anyway, with a less useful message). EXPO_PUBLIC_*
+// values are baked in at build time, so a web build needs them set too.
 if (!supabaseUrl || !supabaseAnonKey) {
   const missing = [
     !supabaseUrl && 'EXPO_PUBLIC_SUPABASE_URL',
     !supabaseAnonKey && 'EXPO_PUBLIC_SUPABASE_ANON_KEY',
   ].filter(Boolean).join(', ')
-  console.error(
-    `[Atelier] Supabase is not configured — missing ${missing}. This app stores all user data in ` +
-    'the cloud, so profile, photo, history and credits cannot be saved or loaded until these env vars are set.',
+  throw new Error(
+    `[Atelier] Supabase is not configured: missing ${missing}. Set it in frontend/.env ` +
+    '(see frontend/.env.example), or in the build environment for a hosted web build.',
   )
 }
 
