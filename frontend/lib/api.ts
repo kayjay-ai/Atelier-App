@@ -27,6 +27,19 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+/**
+ * The readable reason in an API error reply. Replies carry a sentence in
+ * `message` and/or `error`, but `error` is sometimes a details object
+ * ({ status, type, message }) — never show that as "[object Object]".
+ */
+function errorText(body: any): string {
+  if (!body || typeof body !== 'object') return ''
+  if (typeof body.message === 'string' && body.message) return body.message
+  if (typeof body.error === 'string') return body.error
+  if (typeof body.error?.message === 'string') return body.error.message
+  return ''
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   let res: Response
   try {
@@ -41,7 +54,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   }
   if (!res.ok && res.status !== 402) {
     let detail = ''
-    try { detail = (await res.json())?.error ?? '' } catch {}
+    try { detail = errorText(await res.json()) } catch {}
     console.error(`[Atelier] ${path} returned ${res.status}`, detail)
     throw new Error(detail || `Server error ${res.status} on ${path}`)
   }
@@ -158,7 +171,7 @@ export async function createPayment(type: PurchaseType): Promise<CreatePaymentRe
     body: JSON.stringify({ type }),
   })
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body?.error || 'Could not start checkout.')
+  if (!res.ok) throw new Error(errorText(body) || 'Could not start checkout.')
   return body as CreatePaymentResult
 }
 
@@ -173,7 +186,7 @@ export async function getPaymentStatus(orderId: string): Promise<{
     headers: { ...(await authHeaders()) },
   })
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body?.error || 'Could not verify payment.')
+  if (!res.ok) throw new Error(errorText(body) || 'Could not verify payment.')
   return body as { paid: boolean; orderStatus: string; membership: Membership | null }
 }
 
@@ -274,7 +287,7 @@ export async function deleteAccount(): Promise<void> {
   })
   if (!res.ok) {
     let msg = ''
-    try { msg = (await res.json())?.error ?? '' } catch {}
+    try { msg = errorText(await res.json()) } catch {}
     throw new Error(msg || `Could not delete your account (${res.status}).`)
   }
 }
@@ -362,7 +375,7 @@ async function getJson<T>(path: string): Promise<T> {
     throw new Error(`Cannot reach the Atelier server at ${BASE}.`)
   }
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body?.error || `Server error ${res.status}`)
+  if (!res.ok) throw new Error(errorText(body) || `Server error ${res.status}`)
   return body as T
 }
 
