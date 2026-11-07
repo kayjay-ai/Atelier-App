@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from './supabaseClient'
 import type { Account, Client, ClientFeature, ClientStatus, Plan, Store } from './types'
-import { isDemoCompanyEmail, demoAccount, demoReady, DEMO_CLIENT_ID } from './demoCompany'
 import { startStoreSession, type StoreSession } from './api'
 import { ensureDeviceRegistered } from './device'
 import { signOutStore } from './heartbeat'
@@ -79,8 +78,6 @@ export function usableCredits(client: Client): number {
 
 /** Resolve the signed-in user's account. Throws on a real (network/DB) failure. */
 export async function fetchAccount(userId: string, email?: string | null): Promise<Account> {
-  if (isDemoCompanyEmail(email)) { await demoReady(); return demoAccount() } // restores the saved credit balance too
-
   // RLS returns at most the caller's own store (matched on their confirmed
   // email). The email filter too, so routing stays right even before RLS is on.
   if (!email) return { type: 'b2c_customer' }
@@ -130,8 +127,8 @@ export function homeFor(account: Account | null): '/store' | '/(tabs)' {
 const REFRESH_MIN_MS = 30_000
 
 // Company logins also register the iPad with the server (device tracking,
-// remote sign-out / block, admin messages). The demo company has no server side.
-const isRealCompany = (a: Account | null) => a?.type === 'b2b_company' && a.client.id !== DEMO_CLIENT_ID
+// remote sign-out / block, admin messages).
+const isRealCompany = (a: Account | null) => a?.type === 'b2b_company'
 
 /** Admin "Sign out remotely": end this iPad's session (final heartbeat first). */
 async function applyRemoteSignOut(session: StoreSession | null): Promise<boolean> {

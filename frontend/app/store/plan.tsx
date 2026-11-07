@@ -5,7 +5,6 @@ import {
 import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router'
 import { supabase } from '../../lib/supabaseClient'
 import { useAccountStore, usableCredits } from '../../lib/account'
-import { DEMO_CLIENT_ID } from '../../lib/demoCompany'
 import { SUPPORT_EMAIL } from '../../lib/b2b'
 import { inr } from '../../lib/pricing'
 import {
@@ -45,7 +44,6 @@ interface Invoice {
 
 // Billing periods (b2b_subscriptions; RLS → own store). Paid in-app plans add one too.
 async function loadInvoices(clientId: string): Promise<Invoice[]> {
-  if (clientId === DEMO_CLIENT_ID) return []
   const { data, error } = await supabase
     .from('b2b_subscriptions')
     .select('id, plan_id, started_at, renewal_at, amount_inr, payment_status, invoice_url')
@@ -99,17 +97,16 @@ export default function PlanScreen() {
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const clientId = account?.type === 'b2b_company' ? account.client.id : null
-  const isDemo = clientId === DEMO_CLIENT_ID
 
   const loadBilling = useCallback(async () => {
-    if (!clientId || isDemo) return
+    if (!clientId) return
     try {
       setBilling(await fetchB2BBilling())
       setBillingError(null)
     } catch (e: any) {
       setBillingError(e?.message ?? 'Could not load billing.')
     }
-  }, [clientId, isDemo])
+  }, [clientId])
 
   const reloadAll = useCallback(() => {
     refresh(true)
@@ -123,13 +120,13 @@ export default function PlanScreen() {
   const confirmedReturn = useRef<string | null>(null)
   useEffect(() => {
     const orderId = typeof params.order_id === 'string' ? params.order_id : null
-    if (!orderId || confirmedReturn.current === orderId || !clientId || isDemo) return
+    if (!orderId || confirmedReturn.current === orderId || !clientId) return
     confirmedReturn.current = orderId
     confirmB2BPayment(orderId)
       .then((st) => setNotice(noticeFor(st)))
       .catch((e) => setNotice({ tone: 'error', text: e?.message ?? 'Could not check the payment.' }))
       .finally(() => { reloadAll(); router.setParams({ order_id: undefined }) })
-  }, [params.order_id, clientId, isDemo, reloadAll, router])
+  }, [params.order_id, clientId, reloadAll, router])
 
   if (account?.type !== 'b2b_company') return null
   const { client, plan } = account
@@ -156,9 +153,7 @@ export default function PlanScreen() {
   const packs = billing?.packs ?? []
 
   // Why payment can't start yet (shown in the confirm step), or null when it can.
-  const setupProblem = isDemo
-    ? 'Payments aren’t available in the preview company.'
-    : !billing
+  const setupProblem = !billing
       ? `${billingError ?? 'Billing is not available right now.'} Please try again later or contact Atelier support.`
       : billing.setup?.database === false
         ? 'Online payment isn’t switched on yet (the billing database update hasn’t been applied). Contact Atelier support.'
@@ -209,7 +204,6 @@ export default function PlanScreen() {
         <Text style={s.muted}>Plan credits are used first. Your cycle renews {fmtDate(renewalAt)}.</Text>
       </View>
 
-      {isDemo && <Text style={s.muted}>Payments aren’t available in the preview company.</Text>}
       {!!billingError && <Text style={s.warn}>{billingError}</Text>}
 
       <Text style={s.label}>PLANS · MONTHLY · PRICES EXCLUDE GST</Text>
@@ -265,7 +259,7 @@ export default function PlanScreen() {
       {packs.length === 0 && (
         <View style={s.card}>
           <Text style={s.body}>Top-up packs appear here once billing loads. They are added on top of your plan and never expire.</Text>
-          {!payEnabled && !!SUPPORT_EMAIL && !isDemo && (
+          {!payEnabled && !!SUPPORT_EMAIL && (
             <TouchableOpacity style={s.primaryBtn} onPress={() => requestChange('Add credits', client.companyName)}>
               <Icon name="star" size={18} color={Colors.textOnDark} />
               <Text style={s.primaryBtnText}>Request more credits</Text>

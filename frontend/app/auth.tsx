@@ -8,7 +8,6 @@ import { supabase } from '../lib/supabaseClient'
 import { useAccountStore, homeFor } from '../lib/account'
 import { fetchProfile, upsertProfile } from '../lib/supabaseStorage'
 import { fetchAccountType } from '../lib/api'
-import { isDemoCompanyEmail } from '../lib/demoCompany'
 import { Colors, Typography, Space, Radius } from '../lib/theme'
 import { DateOfBirthField, parseDob, type DobValue } from '../components/DateOfBirthField'
 
@@ -78,7 +77,6 @@ export default function AuthScreen() {
 
   useEffect(() => {
     if (mode !== 'login' || !looksLikeEmail(email)) { setEmailType('unknown'); return }
-    if (isDemoCompanyEmail(email)) { setEmailType('company'); return }
     let cancelled = false
     const t = setTimeout(async () => {
       const type = await fetchAccountType(email.trim())

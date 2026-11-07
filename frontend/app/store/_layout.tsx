@@ -6,7 +6,6 @@ import { Tabs } from 'expo-router/js-tabs'
 import { useAccountStore, usableCredits } from '../../lib/account'
 import { dismissStoreNotice } from '../../lib/api'
 import { SUPPORT_EMAIL } from '../../lib/b2b'
-import { DEMO_CLIENT_ID } from '../../lib/demoCompany'
 import { beatNow, signOutStore, startHeartbeat, stopHeartbeat, useHeartbeat } from '../../lib/heartbeat'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
 import { Icon, IconName, bottomTabOptions } from '../../lib/ui'
@@ -165,7 +164,7 @@ export default function StoreLayout() {
 
   // Heartbeat while a real store is signed in (the demo company has no device row).
   const storeStatus = useHeartbeat((s) => s.storeStatus)
-  const heartbeatStore = account?.type === 'b2b_company' && account.client.id !== DEMO_CLIENT_ID ? account.client.id : null
+  const heartbeatStore = account?.type === 'b2b_company' ? account.client.id : null
   useEffect(() => {
     if (!heartbeatStore) return
     startHeartbeat(heartbeatStore)

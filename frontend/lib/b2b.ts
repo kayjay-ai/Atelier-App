@@ -3,7 +3,6 @@ import { supabase } from './supabaseClient'
 import { dataUriToBytes, uuidv4 } from './supabaseStorage'
 import { blobToDataUri } from './dataUri'
 import { useAccountStore } from './account'
-import { DEMO_CLIENT_ID, demoFolders } from './demoCompany'
 import { postEvent } from './api'
 import type { CustomerFolder, CustomerMeasurements, CustomerTryOn, SizeResult } from './types'
 
@@ -44,12 +43,6 @@ export const useStoreSession = create<StoreSessionState>()((set) => ({
   setCustomerId: (customerId) => set({ customerId }),
   reset: () => set({ garment: null, customerId: null }),
 }))
-
-// Preview company (lib/demoCompany.ts): folders live in memory instead of Supabase.
-function isDemo(): boolean {
-  const a = useAccountStore.getState().account
-  return a?.type === 'b2b_company' && a.client.id === DEMO_CLIENT_ID
-}
 
 const BUCKET = 'customer-photos'
 const SIGNED_URL_TTL_SEC = 60 * 60 // 1 h — re-signed on every list load
@@ -131,7 +124,6 @@ const FOLDER_SELECT = 'id, customer_name, phone, measurements, photo_path, creat
 
 /** Active (unexpired) folders for the company, newest first. */
 export async function listFolders(): Promise<CustomerFolder[]> {
-  if (isDemo()) return demoFolders.list()
   const { data, error } = await supabase
     .from('customer_folders')
     .select(FOLDER_SELECT)
@@ -142,7 +134,6 @@ export async function listFolders(): Promise<CustomerFolder[]> {
 }
 
 export async function getFolder(id: string): Promise<CustomerFolder | null> {
-  if (isDemo()) return demoFolders.get(id)
   const { data, error } = await supabase.from('customer_folders').select(FOLDER_SELECT).eq('id', id).maybeSingle()
   if (error) throw error
   if (!data) return null
@@ -156,7 +147,6 @@ export async function createFolder(clientId: string, input: {
   phone?: string
   measurements?: CustomerMeasurements | null
 }): Promise<CustomerFolder> {
-  if (isDemo()) return demoFolders.create(input)
   const { data: session } = await supabase.auth.getSession()
   // The iPad this folder was made on (spec §7 customer_folders.device_id).
   const device = useAccountStore.getState().session?.device ?? null
@@ -181,7 +171,6 @@ export async function createFolder(clientId: string, input: {
 
 /** Upload the customer's try-on photo and attach it to their folder. */
 export async function saveFolderPhoto(clientId: string, folderId: string, dataUri: string): Promise<void> {
-  if (isDemo()) return demoFolders.setPhoto(folderId, dataUri)
   const path = `${clientId}/${folderId}/photo-${uuidv4()}.jpg`
   await upload(path, dataUri)
   const { error } = await supabase.from('customer_folders').update({ photo_path: path }).eq('id', folderId)
@@ -189,7 +178,6 @@ export async function saveFolderPhoto(clientId: string, folderId: string, dataUr
 }
 
 export async function saveFolderMeasurements(folderId: string, m: CustomerMeasurements): Promise<void> {
-  if (isDemo()) return demoFolders.setMeasurements(folderId, m)
   const { error } = await supabase.from('customer_folders').update({ measurements: m }).eq('id', folderId)
   if (error) throw error
 }
@@ -199,7 +187,6 @@ export async function saveFolderMeasurements(folderId: string, m: CustomerMeasur
  * (customer_tryons rows cascade). Files go first so nothing is left orphaned.
  */
 export async function deleteFolder(clientId: string, folderId: string): Promise<void> {
-  if (isDemo()) return demoFolders.remove(folderId)
   const prefix = `${clientId}/${folderId}`
   const { data: files, error: listErr } = await supabase.storage.from(BUCKET).list(prefix, { limit: 1000 })
   if (listErr) throw listErr
@@ -213,19 +200,16 @@ export async function deleteFolder(clientId: string, folderId: string): Promise<
 
 /** Admin dashboard engagement: staff shared or downloaded a result (spec §6.2). */
 export function reportShared(folderId: string | null, how: 'share' | 'download' | 'download_all') {
-  if (isDemo()) return
   postEvent('result_shared', { folderId: folderId ?? undefined, metadata: { how } })
 }
 
 /** Staff picked a garment for a customer (Activity: product + brand). */
 export function reportGarmentSelected(name?: string) {
-  if (isDemo()) return
   postEvent('garment_selected', { metadata: { product: name || null } })
 }
 
 /** Download a stored image as a data URI (the API takes base64 images). */
 export async function storedImageDataUri(path: string): Promise<string> {
-  if (isDemo()) return demoFolders.image(path)
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 300)
   if (error || !data?.signedUrl) throw error ?? new Error('Could not open the stored photo.')
   const res = await fetch(data.signedUrl)
@@ -243,11 +227,6 @@ export async function saveFolderResult(clientId: string, folderId: string, input
   resultDataUri?: string
   sizeResult?: SizeResult
 }): Promise<string> {
-  if (isDemo()) {
-    const id = await demoFolders.saveResult(folderId, input)
-    useAccountStore.getState().setCreditsBalance(demoFolders.credits())
-    return id
-  }
   const id = uuidv4()
   const garmentPath = `${clientId}/${folderId}/${id}-garment.jpg`
   const resultPath = input.resultDataUri ? `${clientId}/${folderId}/${id}-tryon.jpg` : null
@@ -275,13 +254,11 @@ export async function saveFolderResult(clientId: string, folderId: string, input
 
 /** Attach a size recommendation to an existing result row. */
 export async function saveSizeOnResult(resultId: string, sizeResult: SizeResult): Promise<void> {
-  if (isDemo()) return demoFolders.setSize(resultId, sizeResult)
   const { error } = await supabase.from('customer_tryons').update({ size_result: sizeResult }).eq('id', resultId)
   if (error) throw error
 }
 
 export async function listFolderResults(folderId: string): Promise<CustomerTryOn[]> {
-  if (isDemo()) return demoFolders.results(folderId)
   const { data, error } = await supabase
     .from('customer_tryons')
     .select('id, folder_id, garment_name, garment_path, result_path, size_result, created_at')
