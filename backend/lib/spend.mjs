@@ -46,6 +46,8 @@ const busy = (type, err) => ({
 const STORE_REFUSED = {
   trial_ended: 'Your free trial has ended — choose a plan in Plan & Credits.',
   expired: 'Your plan has expired — renew it in Plan & Credits.',
+  not_activated: 'Your store isn’t activated yet — contact Atelier support.',
+  feature_disabled: 'This feature is switched off for your store — contact Atelier support.',
 }
 
 export function createSpender(ledgers = realLedgers) {

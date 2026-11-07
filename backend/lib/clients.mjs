@@ -75,7 +75,8 @@ export function clientActive(ctx) {
  * Atomically spend one store credit (and write the ledger). Refuses paused
  * stores, ended trials and plans past renewal + grace days.
  * Returns { allowed, reason, creditsBalance }; reason ∈ no_credits | inactive |
- * trial_ended | expired | unknown_store.
+ * not_activated | trial_ended | expired | feature_disabled | unknown_store
+ * (supabase/migrations/store-credit-functions.sql).
  */
 export async function consumeClientCredit(clientId, { feature = 'tryon', deviceId = null } = {}) {
   const db = serviceDb()

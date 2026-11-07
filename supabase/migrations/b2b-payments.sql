@@ -163,6 +163,8 @@ $$;
 -- ── 7. Credit functions, top-up aware ────────────────────────────────────────
 -- consume: same gates as before; expires ended-cycle plan credits first, then
 -- spends plan credits before top-up credits.
+-- NOTE: superseded by store-credit-functions.sql (one 4-argument version). If you
+-- re-run this file, run store-credit-functions.sql again afterwards.
 create or replace function public.consume_store_credit(
   p_store_id text, p_feature text default 'tryon', p_device_id uuid default null)
 returns jsonb

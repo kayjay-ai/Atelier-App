@@ -478,6 +478,8 @@ create policy customer_photos_rw on storage.objects for all to authenticated
 
 -- ── 10. Credit functions (service role / admin only) ─────────────────────────
 -- consume: refuses paused stores, ended trials and plans past renewal + grace.
+-- NOTE: superseded by store-credit-functions.sql (one 4-argument version). If you
+-- re-run this file, run store-credit-functions.sql again afterwards.
 create or replace function public.consume_store_credit(
   p_store_id text, p_feature text default 'tryon', p_device_id uuid default null)
 returns jsonb
