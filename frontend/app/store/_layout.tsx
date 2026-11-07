@@ -236,7 +236,16 @@ export default function StoreLayout() {
     )
   }
 
-  // The heartbeat reports b2b_stores.status; anything else but 'active' locks the app.
+  // The heartbeat (device_heartbeat) reports the store's status; anything but 'active' locks the app.
+  // 'pending' = the store row has no activated_at yet (not activated by Atelier).
+  if (storeStatus === 'pending') {
+    return (
+      <FullScreenMessage
+        title="Your store isn’t activated yet"
+        body={`${account.client.storeName || account.client.companyName} hasn’t been activated on Atelier yet. Contact Atelier support to finish setting it up.`}
+      />
+    )
+  }
   if (storeStatus && storeStatus !== 'active') {
     return (
       <FullScreenMessage
