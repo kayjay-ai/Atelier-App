@@ -10,7 +10,6 @@ for (const k of [
   'DEBUG_TRYON', 'CORS_ALLOWED_ORIGINS',
 ]) process.env[k] = '' // blank, not deleted: dotenv never overrides a set value
 process.env.DEMO_MODE = 'false'
-process.env.VERCEL = '1' // index.mjs: don't listen on import
 
 /** Start the app on a free port; returns { url, close }. */
 export async function startApp() {

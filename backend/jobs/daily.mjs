@@ -6,7 +6,7 @@ import { serviceDb } from '../lib/db.mjs'
 
 // =============================================================================
 // Daily maintenance (Admin spec §5.7, §5.9, §8). Safe to run more often — every
-// step is idempotent. Runs either as the Render cron job (`npm run job:daily`)
+// step is idempotent. Runs either as the Droplet's daily cron (`npm run job:daily`)
 // or through POST /api/jobs/daily with the X-Job-Secret header.
 //   1. Delete customer folders past expires_at: their photos/results in the
 //      customer-photos bucket, then the row (results cascade). Logs

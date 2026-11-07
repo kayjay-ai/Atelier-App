@@ -98,7 +98,7 @@ export async function fetchTryOn(
     userPhotoBase64,
     ...context,
   })
-  // Older backends don't send it — "not reported" means Render runs pre-3.1 code.
+  // Older backends don't send it — "not reported" means the API runs pre-3.1 code.
   if (r.image) console.info(`[Atelier] try-on image model: ${r.model ?? 'not reported (old backend)'}`)
   return r
 }

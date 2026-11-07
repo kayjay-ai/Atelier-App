@@ -20,7 +20,7 @@ function secretOk(req, header, envName) {
 }
 
 // POST /api/jobs/daily — run the daily maintenance job (folder expiry, plan
-// expiry, credit notifications). For an external scheduler; Render's cron job
+// expiry, credit notifications). For an external scheduler; the Droplet's cron
 // runs `npm run job:daily` directly instead.
 router.post('/api/jobs/daily', async (req, res) => {
   if (!secretOk(req, 'x-job-secret', 'JOBS_SECRET')) return res.status(401).json({ error: 'unauthorized' })
