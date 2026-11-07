@@ -1,0 +1,7 @@
+# Caddy: HTTPS (automatic Let's Encrypt certificate) for the Atelier API,
+# proxied to the Node process on 127.0.0.1:8787.
+# setup.sh copies this to /etc/caddy/Caddyfile with API_HOST replaced.
+API_HOST {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8787
+}

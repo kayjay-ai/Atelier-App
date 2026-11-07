@@ -40,8 +40,10 @@ yarn-error.*
 frontend/ios/
 frontend/android/
 
-# local env files (contains API keys)
+# local env files (contains API keys), e.g. backend/.env.production for the Droplet
 .env
+.env.*
+!.env.example
 
 # Cloudflare wrangler local state
 .wrangler/

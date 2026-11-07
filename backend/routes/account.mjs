@@ -113,8 +113,8 @@ router.post('/api/auth/account-type', async (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return res.status(400).json({ error: 'Enter a valid email.' })
   }
-  // Behind Render's proxy: the right-most X-Forwarded-For entry is the one the
-  // proxy added (the caller can't forge it); otherwise every user shares one IP.
+  // Behind the reverse proxy (Caddy): the right-most X-Forwarded-For entry is the
+  // one the proxy added (the caller can't forge it); otherwise every user shares one IP.
   const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean)
   const ip = fwd[fwd.length - 1] || req.socket?.remoteAddress || 'unknown'
   const now = Date.now()

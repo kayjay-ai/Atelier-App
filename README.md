@@ -82,8 +82,9 @@ Business terms (store, plan credits, top-up credits, stand-in, ...) are defined 
 
 ## Production
 
-**API (`backend/`)**
-- Install `npm ci`, start `npm start` (listens on `0.0.0.0:$PORT`). Node 22.
+**API (`backend/`)**: runs on a DigitalOcean Droplet behind Caddy; setup, deploy and
+rollback are in [`deploy/droplet/README.md`](deploy/droplet/README.md) (`bash deploy/droplet/deploy.sh`).
+- Install `npm ci -w backend --omit=dev`, start `npm start` (listens on `0.0.0.0:$PORT`). Node 22.
 - Set the variables from `backend/.env.example` on the host, in particular `SUPABASE_URL`,
   `SUPABASE_SERVICE_ROLE_KEY`, `CORS_ALLOWED_ORIGINS` (the web app's origin), `API_PUBLIC_URL`
   and `APP_PUBLIC_URL`.
