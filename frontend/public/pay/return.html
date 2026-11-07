@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Atelier — Payment</title>
+<!--
+  Where Cashfree sends the iPad / phone app's checkout when it finishes
+  (return_url from backend/lib/b2bBilling.mjs). Opening atelier://store/plan closes
+  the in-app browser; the app then asks the API whether the order was paid. Nothing
+  here is trusted for granting credits.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; background: #f6f3ee; color: #2b2622; display: flex;
+         min-height: 100vh; align-items: center; justify-content: center; margin: 0; padding: 24px; text-align: center; }
+  a { color: #4a3f35; font-weight: 600; }
+</style>
+</head>
+<body>
+<div>
+  <p>Payment submitted — returning to Atelier…</p>
+  <p><a id="back" href="atelier://store/plan">Return to the app</a></p>
+</div>
+<script>
+  (function () {
+    var orderId = new URLSearchParams(location.search).get('order_id') || ''
+    var back = 'atelier://store/plan' + (/^b2b_[A-Za-z0-9_]{1,80}$/.test(orderId) ? '?order_id=' + encodeURIComponent(orderId) : '')
+    document.getElementById('back').href = back
+    location.replace(back)
+  })()
+</script>
+</body>
+</html>

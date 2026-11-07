@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Atelier — Payment</title>
+<!--
+  Cashfree checkout for the iPad / phone app. The app opens this page in a secure
+  in-app browser with the payment session the API created
+  (backend/lib/b2bBilling.mjs → checkoutUrl). Served from the web app's own domain,
+  which is the one address Cashfree needs whitelisted. Cashfree then returns to
+  /pay/return, which hands control back to the app.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; background: #f6f3ee; color: #2b2622; display: flex;
+         min-height: 100vh; align-items: center; justify-content: center; margin: 0; padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<p id="msg">Opening secure payment…</p>
+<script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search)
+    var session = params.get('session') || ''
+    var mode = params.get('mode') === 'sandbox' ? 'sandbox' : 'production'
+    var msg = document.getElementById('msg')
+    if (!/^[A-Za-z0-9_\-.=]{8,400}$/.test(session)) {
+      msg.textContent = 'This payment link is invalid. Please start again from the app.'
+      return
+    }
+    try {
+      Cashfree({ mode: mode }).checkout({ paymentSessionId: session, redirectTarget: '_self' })
+    } catch (e) {
+      msg.textContent = 'Could not open the payment page. Please go back to the app and try again.'
+    }
+  })()
+</script>
+</body>
+</html>

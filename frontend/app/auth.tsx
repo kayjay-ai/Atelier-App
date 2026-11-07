@@ -4,7 +4,9 @@ import {
   SafeAreaView, ScrollView, ActivityIndicator, Platform,
 } from 'react-native'
 import { router } from 'expo-router'
+import * as WebBrowser from 'expo-web-browser'
 import { supabase } from '../lib/supabaseClient'
+import { readAuthReturn } from '../lib/oauthReturn'
 import { useAccountStore, homeFor } from '../lib/account'
 import { fetchProfile, upsertProfile } from '../lib/supabaseStorage'
 import { fetchAccountType } from '../lib/api'
@@ -44,8 +46,10 @@ async function enterApp(opts: { dob?: string; fromForm?: boolean } = {}): Promis
   router.replace(homeFor(account))
 }
 
-// Where Google / Apple send the browser back to; the Supabase client reads the
-// session from the URL when this screen loads (detectSessionInUrl on web).
+// Where Google / Apple send the browser back to. Web: the Supabase client reads
+// the session from the URL when this screen loads (detectSessionInUrl). iPad /
+// phone: signInWith() reads it from the atelier://auth link (lib/oauthReturn.ts);
+// that link must be in Supabase → Authentication → URL Configuration → Redirect URLs.
 const oauthRedirect = () => (Platform.OS === 'web' ? `${window.location.origin}/auth` : 'atelier://auth')
 
 // Apple requires "Sign in with Apple" wherever Google sign-in is offered on iOS.
@@ -163,9 +167,36 @@ export default function AuthScreen() {
     setOauthLoading(provider)
     setError(null)
     try {
-      const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: oauthRedirect() } })
+      if (Platform.OS === 'web') {
+        const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: oauthRedirect() } })
+        if (error) throw error
+        return // the browser leaves for the provider and comes back to /auth
+      }
+      // iPad / phone: sign in inside a secure browser sheet; the provider returns
+      // to atelier://auth with the session, which closes the sheet.
+      const redirectTo = oauthRedirect()
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider, options: { redirectTo, skipBrowserRedirect: true },
+      })
       if (error) throw error
-      // Web: the browser leaves for the provider and comes back to /auth.
+      if (!data?.url) throw new Error('Sign-in could not start.')
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
+      if (result.type !== 'success') { setOauthLoading(null); return } // closed by the user
+      const back = readAuthReturn(result.url)
+      if (back.kind === 'error') throw new Error(back.message)
+      if (back.kind === 'code') {
+        const { error: exErr } = await supabase.auth.exchangeCodeForSession(back.code)
+        if (exErr) throw exErr
+      } else if (back.kind === 'tokens') {
+        const { error: setErr } = await supabase.auth.setSession({
+          access_token: back.accessToken, refresh_token: back.refreshToken,
+        })
+        if (setErr) throw setErr
+      } else {
+        throw new Error('Sign-in did not complete. Please try again.')
+      }
+      await enterApp()
+      setOauthLoading(null)
     } catch (e: any) {
       const name = provider === 'google' ? 'Google' : 'Apple'
       setError(e?.message?.toLowerCase().includes('provider')

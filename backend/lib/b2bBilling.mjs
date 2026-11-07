@@ -291,9 +291,15 @@ export async function createB2BOrder({ user, storeId, kind, itemId, acceptTerms,
   })
   if (termsErr) throw termsErr
 
+  // The iPad / phone app pays on the web app's /pay pages, so Cashfree only has to
+  // whitelist the web app's domain. Without APP_PUBLIC_URL (local dev) it falls
+  // back to the API's own /pay/b2b pages (routes/b2b.mjs), kept for older builds.
+  const webBase = (process.env.APP_PUBLIC_URL || '').replace(/\/$/, '')
   const returnUrl = platform === 'web'
     ? `${appBase}/store/plan?order_id={order_id}`
-    : `${apiBase}/pay/b2b/return?order_id={order_id}`
+    : webBase
+      ? `${webBase}/pay/return?order_id={order_id}`
+      : `${apiBase}/pay/b2b/return?order_id={order_id}`
   const notifyUrl = process.env.API_PUBLIC_URL ? `${process.env.API_PUBLIC_URL}/api/payments/webhook` : undefined
 
   let order
@@ -310,7 +316,13 @@ export async function createB2BOrder({ user, storeId, kind, itemId, acceptTerms,
   await supabase.from('b2b_payments').update({ cf_order_id: order.cfOrderId ?? null }).eq('order_id', orderId)
 
   console.log(`[Atelier] b2b order ${orderId}: store ${storeId} ${kind} ${itemId} ₹${base} + GST ₹${gst} = ₹${amount} → +${credits} (${cashfreeMode()})`)
-  return { orderId, paymentSessionId: order.paymentSessionId, mode: cashfreeMode(), amountInr: amount, baseAmountInr: base, gstInr: gst, credits, itemName }
+  const session = encodeURIComponent(order.paymentSessionId ?? '')
+  const checkoutUrl = platform === 'web'
+    ? null
+    : webBase
+      ? `${webBase}/pay/checkout?session=${session}&mode=${cashfreeMode()}`
+      : `${apiBase}/pay/b2b/checkout?session=${session}`
+  return { orderId, paymentSessionId: order.paymentSessionId, mode: cashfreeMode(), amountInr: amount, baseAmountInr: base, gstInr: gst, credits, itemName, checkoutUrl }
 }
 
 /**

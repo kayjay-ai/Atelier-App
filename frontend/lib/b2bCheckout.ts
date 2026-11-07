@@ -11,9 +11,11 @@ export async function openB2BCheckout(order: B2BOrder): Promise<void> {
     await openCashfreeCheckout(order.paymentSessionId, order.mode)
     return
   }
-  // iPad: a secure in-app browser on the API's hosted checkout page; Cashfree's
+  // iPad: a secure in-app browser on the checkout page the server named (the web
+  // app's /pay/checkout; an older API sends none, so use its own page). Cashfree's
   // return page redirects to atelier://store/plan, which closes the browser.
-  await WebBrowser.openAuthSessionAsync(b2bCheckoutUrl(order.paymentSessionId), 'atelier://store/plan')
+  const url = order.checkoutUrl || b2bCheckoutUrl(order.paymentSessionId)
+  await WebBrowser.openAuthSessionAsync(url, 'atelier://store/plan')
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))

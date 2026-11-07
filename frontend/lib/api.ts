@@ -363,6 +363,8 @@ export interface B2BOrder {
   gstInr: number
   credits: number
   itemName: string
+  /** iPad / phone: the page to open for checkout (the web app's /pay/checkout). */
+  checkoutUrl?: string | null
 }
 
 export type B2BPaymentStatus = { status: 'paid' | 'pending' | 'failed' | 'review'; result: Record<string, unknown> | null }

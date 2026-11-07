@@ -150,6 +150,8 @@ router.get('/api/b2b/payments/:orderId', async (req, res) => {
   }
 })
 
+// Older iPad builds: newer ones get checkoutUrl from POST /api/b2b/payments, which
+// points at the web app's /pay/checkout and /pay/return (frontend/public/pay).
 // Hosted checkout for the native iPad app, opened in an in-app browser: loads
 // Cashfree's web SDK for a server-created session, and Cashfree returns to
 // /pay/b2b/return, which hands control back to the app (atelier:// link).
