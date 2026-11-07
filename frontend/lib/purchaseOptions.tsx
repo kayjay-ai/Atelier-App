@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert, useWindowDimensions } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, useWindowDimensions } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createPayment, getPaymentStatus, fetchPricing } from './api'
+import { showAlert } from './notify'
 import { openCashfreeCheckout } from './cashfreeCheckout'
 import { PRICING_OPTIONS, inr } from './pricing'
 import { useMembershipStore } from './store'
@@ -21,6 +23,14 @@ export function usePricingOptions(): PricingOption[] {
 // Buying = server-created Cashfree order → hosted checkout → SERVER verifies →
 // server grants credits → we sync the balance from the server response. Credits
 // are never granted client-side.
+const PHONE_KEY = 'atelier.checkoutPhone'
+
+/** A 10-digit Indian mobile number from what was typed (+91 / 0 prefixes allowed), or null. */
+export function tenDigitMobile(input: string): string | null {
+  const digits = input.replace(/\D/g, '').replace(/^(?:91|0)(?=\d{10}$)/, '')
+  return /^[6-9]\d{9}$/.test(digits) ? digits : null
+}
+
 export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership | null) => void }) {
   const options = usePricingOptions()
   const { width } = useWindowDimensions()
@@ -29,29 +39,39 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
   const [gridWidth, setGridWidth] = useState(0)
   const stack = (gridWidth || width) < 460
   const [busy, setBusy] = useState<PurchaseType | null>(null)
+  // Cashfree needs the payer's mobile number; remembered on this device.
+  const [phone, setPhone] = useState('')
+  const [phoneError, setPhoneError] = useState<string | null>(null)
+  useEffect(() => {
+    AsyncStorage.getItem(PHONE_KEY).then((v) => { if (v) setPhone(v) }).catch(() => {})
+  }, [])
   const membershipStore = useMembershipStore()
   const recommended = options.find((o) => o.recommended)?.type ?? options[Math.min(1, options.length - 1)]?.type
 
   async function buy(opt: PricingOption) {
     if (busy) return
     if (Platform.OS !== 'web') {
-      Alert.alert('Use the web app', 'Secure checkout runs in the Atelier web app. Please buy credits there.')
+      showAlert('Use the web app', 'Secure checkout runs in the Atelier web app. Please buy credits there.')
       return
     }
+    const mobile = tenDigitMobile(phone)
+    if (!mobile) { setPhoneError('Enter your 10-digit mobile number to pay.'); return }
+    setPhoneError(null)
+    AsyncStorage.setItem(PHONE_KEY, mobile).catch(() => {})
     setBusy(opt.type)
     try {
-      const order = await createPayment(opt.type)          // amount computed server-side
+      const order = await createPayment(opt.type, mobile)  // amount computed server-side
       await openCashfreeCheckout(order.paymentSessionId, order.mode)
       const status = await getPaymentStatus(order.orderId) // server verifies + grants
       if (status.paid && status.membership) {
         membershipStore.setMembership(status.membership)
-        Alert.alert('Credits added', `+${order.credits} credit${order.credits > 1 ? 's' : ''} added — you now have ${status.membership.creditsBalance}.`)
+        showAlert('Credits added', `+${order.credits} credit${order.credits > 1 ? 's' : ''} added — you now have ${status.membership.creditsBalance}.`)
         onPurchased?.(status.membership)
       } else {
-        Alert.alert('Payment not confirmed', `We haven't received confirmation yet (status: ${status.orderStatus}). If you were charged, it'll reflect shortly.`)
+        showAlert('Payment not confirmed', `We haven't received confirmation yet (status: ${status.orderStatus}). If you were charged, it'll reflect shortly.`)
       }
     } catch (e: any) {
-      Alert.alert('Checkout', e?.message || 'Payment was not completed. Please try again.')
+      showAlert('Checkout', e?.message || 'Payment was not completed. Please try again.')
     } finally {
       setBusy(null)
     }
@@ -59,6 +79,22 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
 
   return (
     <View style={{ gap: Space.sm }}>
+      {Platform.OS === 'web' && (
+        <View style={s.phoneRow}>
+          <Text style={s.phoneLabel}>MOBILE NUMBER (FOR YOUR PAYMENT)</Text>
+          <TextInput
+            style={s.phoneInput}
+            value={phone}
+            onChangeText={(t) => { setPhone(t); setPhoneError(null) }}
+            placeholder="10-digit mobile number"
+            placeholderTextColor={Colors.textMuted}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            maxLength={16}
+          />
+          {!!phoneError && <Text style={s.phoneError}>{phoneError}</Text>}
+        </View>
+      )}
       <View style={[s.grid, stack && s.gridStacked]} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
         {options.map((opt) => {
           const featured = opt.type === recommended
@@ -91,6 +127,13 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
 }
 
 const s = StyleSheet.create({
+  phoneRow: { gap: 6, maxWidth: 360 },
+  phoneLabel: { ...Typography.label },
+  phoneInput: {
+    backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Space.base, paddingVertical: 12, ...Typography.body, color: Colors.text,
+  },
+  phoneError: { ...Typography.bodySmall, color: Colors.error },
   grid: { flexDirection: 'row', gap: Space.md },
   gridStacked: { flexDirection: 'column' },
   // Row: equal thirds. Stacked: natural height (basis 0 in a column collapses the cards).

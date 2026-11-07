@@ -70,11 +70,12 @@ pm2 startup systemd -u "$APP_USER" --hp "/home/$APP_USER" >/dev/null
 systemctl start "pm2-$APP_USER"   # the boot service owns the pm2 daemon
 as_app "pm2 describe pm2-logrotate" >/dev/null 2>&1 || as_app "pm2 install pm2-logrotate"
 
-echo "== daily job: 21:30 UTC = 03:00 IST (server clock is UTC)"
+echo "== cron: daily job 21:30 UTC = 03:00 IST (server clock is UTC), payment reconcile every 30 min"
 cat > /etc/cron.d/atelier-daily <<EOF
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 30 21 * * * $APP_USER cd $APP_DIR/current && npm run job:daily >> $APP_DIR/shared/daily.log 2>&1
+*/30 * * * * $APP_USER cd $APP_DIR/current && npm run job:reconcile >> $APP_DIR/shared/reconcile.log 2>&1
 EOF
 chmod 644 /etc/cron.d/atelier-daily
 

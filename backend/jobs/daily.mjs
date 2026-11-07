@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url'
 import { getSettings, logAppEvent } from '../lib/clients.mjs'
 import { sendNotification } from '../lib/notify.mjs'
 import { serviceDb } from '../lib/db.mjs'
+import { reconcilePayments } from './reconcile.mjs'
 
 // =============================================================================
 // Daily maintenance (Admin spec §5.7, §5.9, §8). Safe to run more often — every
@@ -129,6 +130,7 @@ export async function runDailyJob() {
   })
   await step('storeNotifications', () => notifyCompanies(db, settings))
   await step('consumerNotifications', () => notifyConsumers(db, settings))
+  await step('paymentsReconciled', () => reconcilePayments())
   console.log('[Atelier] daily job finished:', JSON.stringify(report))
   return report
 }

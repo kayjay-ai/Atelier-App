@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, Image, StyleSheet,
-  SafeAreaView, ScrollView, ActivityIndicator, Alert, Platform,
+  SafeAreaView, ScrollView, ActivityIndicator, Platform,
 } from 'react-native'
 import { pickImageDataUri } from '../../lib/imageInput'
 import { useRouter, useFocusEffect } from 'expo-router'
@@ -10,6 +10,7 @@ import { imageToDataUri } from '../../lib/dataUri'
 import { isFallback, isRetryable } from '../../lib/aiOutcome'
 import { runTryOnAttempt } from '../../lib/tryOnAttempt'
 import { PurchaseOptions } from '../../lib/purchaseOptions'
+import { showAlert } from '../../lib/notify'
 import {
   fetchGarmentFromUrl, fetchTryOn, fetchSizeAssist,
   fetchVerdict, checkGarmentSafety, postEvent,
@@ -223,7 +224,7 @@ export default function HomeScreen() {
     try {
       uri = await pickImageDataUri(source, { quality: 0.85 })
     } catch (e: any) {
-      Alert.alert('Photo', e?.message ?? 'Could not open the camera or gallery.')
+      showAlert('Photo', e?.message ?? 'Could not open the camera or gallery.')
       return
     }
     if (uri) captureGarment({ imageBase64: uri, source: 'upload' })

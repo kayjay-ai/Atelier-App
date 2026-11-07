@@ -1,4 +1,4 @@
-import { cashfreeConfigured, cashfreeMode, createOrder, getOrder, verifyWebhookSignature } from './cashfree.mjs'
+import { cashfreeConfigured, cashfreeMode, createOrder, getOrder, normalizePhone, verifyWebhookSignature } from './cashfree.mjs'
 import { purchaseFor } from './pricing.mjs'
 import { createPurchase, getPurchaseUser, grantCredits } from './membership.mjs'
 import { BillingError, verifyAndApplyB2BOrder, isB2BOrderId } from './b2bBilling.mjs'
@@ -29,6 +29,11 @@ export const creditPack = {
     if (!cashfreeConfigured()) throw new BillingError(400, 'Payments are not configured on the server.', 'not_configured')
     const option = await purchaseFor(type)
     if (!option) throw new BillingError(400, 'Unknown purchase type.', 'unknown_item')
+    // Cashfree requires the customer's mobile number (the app asks for it at checkout).
+    const customerPhone = normalizePhone(phone) || normalizePhone(user.phone)
+    if (!customerPhone && cashfreeMode() === 'production') {
+      throw new BillingError(400, 'Enter a valid 10-digit mobile number to pay.', 'no_phone')
+    }
 
     const orderId = `atelier_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const amount = option.amountInr
@@ -39,7 +44,8 @@ export const creditPack = {
       currency: 'INR',
       customerId: user.id,
       customerEmail: user.email,
-      customerPhone: phone || user.phone || undefined,
+      customerPhone,
+      orderNote: `Atelier: ${option.label} (${option.credits} credit${option.credits === 1 ? '' : 's'})`,
       returnUrl: `${appUrl}/premium?order_id={order_id}`,
       notifyUrl: apiUrl ? `${apiUrl}/api/payments/webhook` : undefined,
     })

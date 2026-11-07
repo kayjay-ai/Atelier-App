@@ -14,6 +14,7 @@
     "start": "npm start -w backend",
     "typecheck": "npm run typecheck -w frontend",
     "job:daily": "npm run job:daily -w backend",
+    "job:reconcile": "npm run job:reconcile -w backend",
     "test": "npm run test -w backend && npm run test -w frontend"
   },
   "devDependencies": {

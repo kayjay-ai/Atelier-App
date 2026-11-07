@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { cashfreeConfigured, cashfreeMode, createOrder, getOrder } from './cashfree.mjs'
+import { cashfreeConfigured, cashfreeMode, createOrder, getOrder, normalizePhone } from './cashfree.mjs'
 import { serviceDb, isMissingSchema } from './db.mjs'
 
 // =============================================================================
@@ -240,8 +240,8 @@ export async function billingOverview(storeId, { apiBase } = {}) {
 // Cashfree needs a 10-digit customer phone; production orders use the
 // company's real contact number.
 function customerPhone(company) {
-  const digits = String(company?.primary_contact ?? '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
-  if (/^\d{10}$/.test(digits)) return digits
+  const phone = normalizePhone(company?.primary_contact)
+  if (phone) return phone
   if (cashfreeMode() === 'sandbox') return '9999999999'
   throw new BillingError(400, 'Your company has no valid contact phone on file — ask Atelier support to add one before paying.', 'no_phone')
 }

@@ -26,6 +26,15 @@ const SECRET_KEY = process.env.CASHFREE_SECRET_KEY || ''
 // back to the API secret key (the documented default).
 const WEBHOOK_SECRET = process.env.CASHFREE_WEBHOOK_SECRET || SECRET_KEY
 
+/**
+ * A 10-digit Indian mobile number from what the customer typed ("+91 98765 43210",
+ * "098765 43210", ...), or null. Cashfree requires customer_phone on every order.
+ */
+export function normalizePhone(input) {
+  const digits = String(input ?? '').replace(/\D/g, '').replace(/^(?:91|0)(?=\d{10}$)/, '')
+  return /^[6-9]\d{9}$/.test(digits) ? digits : null
+}
+
 export function cashfreeConfigured() {
   return !!(APP_ID && SECRET_KEY)
 }
@@ -65,7 +74,11 @@ async function cfFetch(path, init) {
  * alphanumeric, so the Supabase UUID is stripped of hyphens; the authoritative
  * user_id ↔ order mapping is persisted separately (purchases table).
  */
-export async function createOrder({ orderId, amount, currency = 'INR', customerId, customerEmail, customerPhone, returnUrl, notifyUrl, orderNote = 'Atelier Premium — 30 credits / month' }) {
+export async function createOrder({ orderId, amount, currency = 'INR', customerId, customerEmail, customerPhone, returnUrl, notifyUrl, orderNote = 'Atelier credits' }) {
+  const phone = normalizePhone(customerPhone)
+  if (IS_PROD && !phone) {
+    throw Object.assign(new Error('A valid 10-digit mobile number is required to pay.'), { status: 400, code: 'no_phone' })
+  }
   const order_meta = {}
   if (returnUrl) order_meta.return_url = returnUrl
   if (notifyUrl) order_meta.notify_url = notifyUrl
@@ -77,7 +90,9 @@ export async function createOrder({ orderId, amount, currency = 'INR', customerI
     customer_details: {
       customer_id: String(customerId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 50),
       customer_email: customerEmail || undefined,
-      customer_phone: customerPhone || '9999999999', // sandbox-safe placeholder
+      // Required by Cashfree: the customer's real number in production; the
+      // placeholder is only for sandbox testing.
+      customer_phone: phone || '9999999999',
     },
     order_note: orderNote,
     ...(Object.keys(order_meta).length ? { order_meta } : {}),

@@ -13,6 +13,7 @@
     "dev": "node index.mjs",
     "dev:watch": "node --watch index.mjs",
     "job:daily": "node jobs/daily.mjs",
+    "job:reconcile": "node jobs/reconcile.mjs",
     "seed:tryon": "node --env-file=.env scripts/seed-tryon.mjs",
     "setup:supabase": "node --env-file=.env scripts/setup-supabase-storage.mjs",
     "test": "node --test"

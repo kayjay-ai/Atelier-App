@@ -164,11 +164,11 @@ export async function fetchPricing(): Promise<{ freeCredits: number; options: Pr
 }
 
 /** Ask the server to create a Cashfree order for a purchase type. Secrets stay server-side. */
-export async function createPayment(type: PurchaseType): Promise<CreatePaymentResult> {
+export async function createPayment(type: PurchaseType, phone?: string): Promise<CreatePaymentResult> {
   const res = await fetch(`${BASE}/api/payments/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify({ type }),
+    body: JSON.stringify({ type, phone }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(errorText(body) || 'Could not start checkout.')
