@@ -1,0 +1,27 @@
+{
+  "name": "atelier-backend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Atelier backend API (Express) used by the Atelier app",
+  "type": "module",
+  "main": "index.mjs",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "node index.mjs",
+    "dev:watch": "node --watch index.mjs",
+    "job:daily": "node jobs/daily.mjs",
+    "seed:tryon": "node --env-file=.env scripts/seed-tryon.mjs",
+    "setup:supabase": "node --env-file=.env scripts/setup-supabase-storage.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@google/genai": "^0.3.1",
+    "@supabase/supabase-js": "^2.108.1",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "sharp": "^0.33.5"
+  }
+}

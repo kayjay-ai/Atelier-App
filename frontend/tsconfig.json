@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // lib/tryOnAttempt.ts imports "./aiOutcome.ts" so Node can run its unit tests directly.
+    "allowImportingTsExtensions": true
+  },
+  // test/ runs on Node (node:test), not in the app bundle.
+  "exclude": ["node_modules", "babel.config.js", "metro.config.js", "android", "ios", "test", "scripts", "dist"]
+}
