@@ -17,7 +17,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://192.168.1.102:8787",
+        "EXPO_PUBLIC_API_URL": "http://192.168.1.102:8787",
         "EXPO_PUBLIC_SUPABASE_URL": "https://lrpwtartxkgiteuzlwan.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_NSk-GPnOND6REtWXcKhzxw_BLrmNCS3"
       }
@@ -38,7 +38,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://atelier-pkkz.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://64-227-155-17.sslip.io",
         "EXPO_PUBLIC_SUPABASE_URL": "https://lrpwtartxkgiteuzlwan.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_NSk-GPnOND6REtWXcKhzxw_BLrmNCS3"
       }

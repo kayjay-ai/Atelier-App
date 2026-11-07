@@ -3,8 +3,8 @@
 # Run from the repo root (Git Bash on Windows, or any Unix shell):
 #   deploy/droplet/deploy.sh            # deploys HEAD
 #   deploy/droplet/deploy.sh <git-ref>  # deploys a branch, tag or commit
-# Only committed files are shipped (git archive); the server never needs
-# access to the private GitHub repo. Override the target with ATELIER_HOST.
+# Only committed files are shipped (git archive); the server needs no GitHub
+# access or credentials. Override the target with ATELIER_HOST.
 set -euo pipefail
 
 HOST="${ATELIER_HOST:-root@64.227.155.17}"
