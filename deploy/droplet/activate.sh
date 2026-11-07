@@ -37,7 +37,7 @@ for _ in $(seq 1 20); do
   if curl -fsS http://127.0.0.1:8787/api/health; then
     echo
     # Keep the 5 newest releases, and never the live one (it may be older after a rollback).
-    ls -1dt "$APP_DIR"/releases/*/ | tail -n +6 | grep -vxF "$DIR/" | xargs -r rm -rf
+    ls -1dt "$APP_DIR"/releases/*/ | tail -n +6 | { grep -vxF "$DIR/" || true; } | xargs -r rm -rf
     echo "== live: $RELEASE"
     exit 0
   fi
