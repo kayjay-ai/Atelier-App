@@ -18,6 +18,7 @@ proxies to Node 22 on `127.0.0.1:8787`, kept alive by pm2 as the `atelier` user.
 /srv/atelier/current -> releases/...      the live release
 /srv/atelier/shared/backend.env           production secrets (linked as backend/.env)
 /srv/atelier/shared/daily.log             output of the daily job
+/srv/atelier/shared/reconcile.log         output of the payment safety net (every 30 min)
 ```
 
 ## First time
