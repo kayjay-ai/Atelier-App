@@ -22,6 +22,17 @@ const FRAMING_TIPS = [
   'Plain background, good light',
 ]
 
+const PHONE_HINT = 'Enter a 10-digit phone number, or leave the phone empty.'
+
+/** A database error from saving a folder, as a sentence for the store staff. */
+function folderErrorMessage(e: any): string {
+  const msg = String(e?.message ?? '')
+  if (msg.includes('invalid_phone')) return PHONE_HINT
+  if (msg.includes('invalid_name')) return 'Enter the customer’s name.'
+  if (e?.code === '23505') return 'This customer already has a folder with this phone number. Open it from Customers.'
+  return `Couldn't create the folder — ${msg || 'please try again'}.`
+}
+
 export default function NewCustomerScreen() {
   const account = useAccountStore((st) => st.account)
   const setCustomerId = useStoreSession((st) => st.setCustomerId)
@@ -47,6 +58,8 @@ export default function NewCustomerScreen() {
   async function create() {
     setError(null)
     if (!name.trim()) { setError('Enter the customer’s name.'); return }
+    const phoneDigits = phone.replace(/\D/g, '')
+    if (phoneDigits && phoneDigits.length < 10) { setError(PHONE_HINT); return }
     if (!consent) { setError('The customer must agree before their photo is taken.'); return }
     const parsed = parseMeasurements(meas)
     if (parsed.error !== undefined) { setError(parsed.error); return }
@@ -58,7 +71,7 @@ export default function NewCustomerScreen() {
       setFolder(created)
       setCustomerId(created.id)
     } catch (e: any) {
-      setError(`Couldn't create the folder — ${e?.message ?? 'please try again'}.`)
+      setError(folderErrorMessage(e))
     } finally {
       setBusy(false)
     }
