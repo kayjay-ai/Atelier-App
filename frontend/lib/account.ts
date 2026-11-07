@@ -20,7 +20,7 @@ const isMissingTable = (msg?: string) =>
 // Never select store_password_hash — the app has no use for it.
 const STORE_SELECT =
   'store_id, store_name, store_address, city, state, pincode, subscription_plan, credits_balance, ' +
-  'trial_ends_at, renewal_at, b2b_companies(company_name, brand_name, logo_url, gstin, manager_name, manager_email, primary_contact)'
+  'trial_ends_at, renewal_at, b2b_companies(company_name, brand_name, logo_url, gstin, primary_contact_name, manager_email, primary_contact)'
 
 function toPlan(row: any): Plan {
   return {
@@ -57,7 +57,7 @@ function toClient(row: any, state: { status: ClientStatus; usableCredits: number
     companyName: c.brand_name || c.company_name || row.store_name,
     storeName: row.store_name,
     logoUrl: c.logo_url ?? null,
-    contactName: c.manager_name ?? null,
+    contactName: c.primary_contact_name ?? null,
     contactEmail: c.manager_email ?? null,
     contactPhone: c.primary_contact ?? null,
     gstin: c.gstin ?? null,

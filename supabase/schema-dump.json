@@ -486,7 +486,7 @@
                 {
                     "name": "store_id",
                     "type": "text",
-                    "default": "unique_store_id()",
+                    "default": null,
                     "not_null": true
                 },
                 {
@@ -540,7 +540,7 @@
                 {
                     "name": "subscription_plan",
                     "type": "text",
-                    "default": "'Basic'::text",
+                    "default": "'Starter'::text",
                     "not_null": false
                 },
                 {
@@ -560,16 +560,67 @@
                     "type": "timestamp with time zone",
                     "default": "now()",
                     "not_null": false
+                },
+                {
+                    "name": "credits_balance",
+                    "type": "integer",
+                    "default": "0",
+                    "not_null": true
+                },
+                {
+                    "name": "trial_ends_at",
+                    "type": "timestamp with time zone",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "renewal_at",
+                    "type": "timestamp with time zone",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "manager_name",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "manager_phone",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "invited_at",
+                    "type": "timestamp with time zone",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "activated_at",
+                    "type": "timestamp with time zone",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "topup_credits",
+                    "type": "integer",
+                    "default": "0",
+                    "not_null": true
                 }
             ],
             "policies": null,
             "triggers": null,
             "constraints": [
                 "FOREIGN KEY (company_id) REFERENCES b2b_companies(company_id) ON DELETE CASCADE",
+                "CHECK ((credits_balance >= 0))",
+                "CHECK ((store_id ~ '^[A-Z]{4}[0-9]{2}[A-Z]{3}$'::text))",
                 "PRIMARY KEY (store_id)",
+                "FOREIGN KEY (subscription_plan) REFERENCES b2b_plans(id)",
                 "CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text, 'suspended'::text])))",
                 "UNIQUE (store_email)",
-                "CHECK ((subscription_plan = ANY (ARRAY['Basic'::text, 'Pro'::text, 'Ultra'::text])))"
+                "CHECK (((topup_credits >= 0) AND (topup_credits <= credits_balance)))"
             ],
             "rows_estimate": -1
         },
@@ -812,7 +863,7 @@
                     "not_null": false
                 },
                 {
-                    "name": "manager_name",
+                    "name": "primary_contact_name",
                     "type": "text",
                     "default": null,
                     "not_null": false
@@ -846,11 +897,42 @@
                     "type": "timestamp with time zone",
                     "default": "now()",
                     "not_null": false
+                },
+                {
+                    "name": "company_code",
+                    "type": "text",
+                    "default": null,
+                    "not_null": true
+                },
+                {
+                    "name": "designation",
+                    "type": "text",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "owner_mail_due_at",
+                    "type": "timestamp with time zone",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "owner_mail_draft",
+                    "type": "jsonb",
+                    "default": null,
+                    "not_null": false
+                },
+                {
+                    "name": "owner_mail_attempts",
+                    "type": "integer",
+                    "default": "0",
+                    "not_null": true
                 }
             ],
             "policies": null,
             "triggers": null,
             "constraints": [
+                "CHECK ((company_code ~ '^[A-Z]{4}$'::text))",
                 "UNIQUE (manager_email)",
                 "PRIMARY KEY (company_id)",
                 "CHECK ((status = ANY (ARRAY['pending'::text, 'active'::text, 'inactive'::text])))"
