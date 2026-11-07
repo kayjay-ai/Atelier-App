@@ -22,6 +22,8 @@ One npm workspace (root `package.json`, one `package-lock.json`). See `README.md
 
 Env: `frontend/.env` holds only `EXPO_PUBLIC_*` values, because they are bundled into the public app.
 Secrets go in `backend/.env`. Each has a `.env.example`; keep it in step when adding a variable.
+`frontend/.env.production` is committed: the public settings for production/web builds (the live API and Supabase URLs). Never put a secret in it.
+The API deploys to the DigitalOcean Droplet with `bash deploy/droplet/deploy.sh` (see `deploy/droplet/README.md`); the web app deploys from `main` on Cloudflare.
 
 Run locally with `npm run dev` from the root (API on :8787 plus Expo), and check with `npm test`, `npm run typecheck` and `npm run build:web`.
 API responses only ever gain fields: installed iPad and phone builds keep calling older shapes.

@@ -44,6 +44,8 @@ frontend/android/
 .env
 .env.*
 !.env.example
+# Public-only build settings for the web/production app (no secrets, see the file).
+!frontend/.env.production
 
 # Cloudflare wrangler local state
 .wrangler/

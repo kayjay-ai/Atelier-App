@@ -94,7 +94,11 @@ rollback are in [`deploy/droplet/README.md`](deploy/droplet/README.md) (`bash de
 
 **Web app (`frontend/`)**
 - Build `npm ci && npm run build:web`, then serve `frontend/dist/` as static files.
-- Set the `EXPO_PUBLIC_*` variables in the build environment (they are baked in at build time).
+- The `EXPO_PUBLIC_*` values are baked in at build time from `frontend/.env.production`
+  (committed; public values only). A variable set in the build environment (e.g. Cloudflare
+  → Settings → Build → Variables) overrides it. Node 22 is pinned by `.node-version`.
+- Cloudflare: Worker `atelier-web`, builds `main` with `npm run build:web`, deploys with
+  `npx wrangler deploy` (`wrangler.jsonc`); live at https://atelier-web.team-quasarinnovates.workers.dev.
 
 **iOS / Android:** EAS Build from `frontend/` (`eas build --profile <name>`); profiles and
 their env are in `frontend/eas.json`.
