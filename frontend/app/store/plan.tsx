@@ -56,11 +56,13 @@ async function loadInvoices(clientId: string): Promise<Invoice[]> {
 
 const STATUS_LABEL: Record<Invoice['payment_status'], string> = { paid: 'Paid', due: 'Due', overdue: 'Overdue', waived: 'Waived' }
 
-const PLAN_BUTTON: Record<NonNullable<B2BPlanOption['action']>, (name: string) => string> = {
-  choose: (n) => `Choose ${n}`,
-  upgrade: () => 'Upgrade',
-  renew: () => 'Renew',
-  switch: (n) => `Switch to ${n}`,
+// Bigger than the current plan → "Upgrade"; smaller (or no current plan) →
+// "Choose". The current plan has no button while it's live; once it has lapsed
+// it shows "Renew", since a store pays for each cycle (nothing auto-renews yet).
+// What each button may do still comes from the server (action / allowed).
+function planButtonLabel(p: { priceInr: number; current: boolean }, currentPrice: number | null): string {
+  if (p.current) return 'Renew'
+  return currentPrice != null && p.priceInr > currentPrice ? 'Upgrade' : 'Choose'
 }
 
 type Purchase = { kind: 'plan'; plan: B2BPlanOption } | { kind: 'topup'; pack: B2BTopupPack }
@@ -151,6 +153,10 @@ export default function PlanScreen() {
       current: p.id === plan?.id, action: null, allowed: false, reason: null,
     }))
   const packs = billing?.packs ?? []
+  const currentPrice = plans.find((p) => p.current)?.priceInr ?? null
+  const nowMs = Date.now()
+  const trialEnded = !!client.trialEndsAt && !renewalAt && Date.parse(client.trialEndsAt) < nowMs
+  const planLapsed = client.status === 'suspended' || trialEnded || (!!renewalAt && Date.parse(renewalAt) < nowMs)
 
   // Why payment can't start yet (shown in the confirm step), or null when it can.
   const setupProblem = !billing
@@ -217,14 +223,14 @@ export default function PlanScreen() {
             </Text>
             <Text style={s.body}>{p.credits.toLocaleString('en-IN')} credits / month</Text>
             {p.current && <Text style={s.currentTag}>Current plan</Text>}
-            {!!p.action && (
+            {!!p.action && !(p.current && !planLapsed) && (
               <>
                 <TouchableOpacity
                   style={[p.current ? s.planBtn : s.planBtnSolid, !p.allowed && s.btnDisabled]}
                   disabled={!p.allowed}
                   onPress={() => { if (p.totalInr != null) setPurchase({ kind: 'plan', plan: p as B2BPlanOption }) }}
                 >
-                  <Text style={p.current ? s.planBtnText : s.planBtnSolidText}>{PLAN_BUTTON[p.action](p.name)}</Text>
+                  <Text style={p.current ? s.planBtnText : s.planBtnSolidText}>{planButtonLabel(p, currentPrice)}</Text>
                 </TouchableOpacity>
                 {!p.allowed && !!p.reason && <Text style={s.reason}>{p.reason}</Text>}
               </>
