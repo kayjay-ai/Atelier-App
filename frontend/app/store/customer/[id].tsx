@@ -6,7 +6,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useAccountStore } from '../../../lib/account'
 import {
   getFolder, listFolderResults, saveFolderMeasurements, saveFolderPhoto, deleteFolder, availabilityLabel, expiringSoon,
-  useStoreSession, reportShared, maskPhone,
+  useStoreSession, useHiddenResults, reportShared, maskPhone,
 } from '../../../lib/b2b'
 import { pickImageDataUri } from '../../../lib/imageInput'
 import { downloadImage, shareImage } from '../../../lib/shareImage'
@@ -24,13 +24,17 @@ export default function CustomerFolderScreen() {
   const account = useAccountStore((st) => st.account)
 
   const [folder, setFolder] = useState<CustomerFolder | null>(null)
-  const [results, setResults] = useState<CustomerTryOn[]>([])
+  const [savedResults, setSavedResults] = useState<CustomerTryOn[]>([])
+  const hiddenIds = useHiddenResults((st) => st.hidden[id])
+  const hideResult = useHiddenResults((st) => st.hide)
+  const results = savedResults.filter((r) => !hiddenIds?.includes(r.id))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [meas, setMeas] = useState<MeasurementValues>(emptyMeasurementValues())
   const [busy, setBusy] = useState<null | 'photo' | 'meas' | 'delete'>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmResultId, setConfirmResultId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -39,7 +43,7 @@ export default function CustomerFolderScreen() {
     try {
       const [f, r] = await Promise.all([getFolder(id), listFolderResults(id)])
       setFolder(f)
-      setResults(r)
+      setSavedResults(r)
       if (f) setMeas(emptyMeasurementValues(f.measurements))
     } catch (e: any) {
       setError(e?.message ?? 'Could not load this folder.')
@@ -49,7 +53,7 @@ export default function CustomerFolderScreen() {
   }, [id])
 
   useFocusEffect(useCallback(() => {
-    setLoading(true); setEditing(false); setNotice(null); setConfirmDelete(false)
+    setLoading(true); setEditing(false); setNotice(null); setConfirmDelete(false); setConfirmResultId(null)
     load()
   }, [load]))
 
@@ -232,6 +236,24 @@ export default function CustomerFolderScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
+                {confirmResultId === r.id ? (
+                  <View style={s.resultConfirm}>
+                    <Text style={s.muted}>Delete this {r.resultUrl ? 'try-on' : 'size check'} from this device? The saved copy stays in your store's records.</Text>
+                    <View style={s.row}>
+                      <TouchableOpacity style={[s.smallBtn, s.confirmBtn]} onPress={() => setConfirmResultId(null)}>
+                        <Text style={s.smallBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[s.smallBtn, s.confirmBtn, s.smallDeleteBtn]} onPress={() => { hideResult(folder.id, r.id); setConfirmResultId(null) }}>
+                        <Text style={[s.smallBtnText, { color: Colors.textOnDark }]}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={s.resultDelete} onPress={() => setConfirmResultId(r.id)}>
+                    <Icon name="trash" size={16} color={Colors.error} />
+                    <Text style={[s.smallBtnText, { color: Colors.error }]}>Delete</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           ))}
@@ -298,6 +320,10 @@ const s = StyleSheet.create({
     borderRadius: Radius.full, paddingHorizontal: Space.md, paddingVertical: 6,
   },
   smallBtnText: { ...Typography.caption, color: Colors.text, fontWeight: '600' },
+  resultDelete: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 6 },
+  resultConfirm: { gap: Space.sm, paddingTop: Space.xs },
+  confirmBtn: { flex: 1, justifyContent: 'center', minHeight: 36 },
+  smallDeleteBtn: { backgroundColor: Colors.error, borderColor: Colors.error },
   emptyTitle: { ...Typography.h3 },
   errorBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.sm, padding: Space.md },
   errorText: { ...Typography.bodySmall, color: Colors.error },

@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, useWindowDimensions,
 } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
-import { listFolders, availabilityLabel, expiringSoon, maskPhone, phoneMatches, SEARCH_INPUT_PROPS } from '../../lib/b2b'
+import { listFolders, useHiddenResults, availabilityLabel, expiringSoon, maskPhone, phoneMatches, SEARCH_INPUT_PROPS } from '../../lib/b2b'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
 import { Icon } from '../../lib/ui'
 import type { CustomerFolder } from '../../lib/types'
@@ -19,6 +19,7 @@ export default function CustomersScreen() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const hidden = useHiddenResults((st) => st.hidden)
 
   const load = useCallback(async () => {
     setError(null)
@@ -93,6 +94,7 @@ export default function CustomersScreen() {
           ListEmptyComponent={<Text style={s.emptyBody}>No customer matches “{query}”.</Text>}
           renderItem={({ item }) => {
             const soon = expiringSoon(item.expiresAt)
+            const tryons = Math.max(0, item.tryonCount - (hidden[item.id]?.length ?? 0))
             return (
               <TouchableOpacity style={s.card} onPress={() => router.push(`/store/customer/${item.id}`)}>
                 {item.photoUrl
@@ -104,7 +106,7 @@ export default function CustomersScreen() {
                     {new Date(item.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                     {item.phone ? ` · ${maskPhone(item.phone)}` : ''}
                   </Text>
-                  <Text style={s.meta}>{item.tryonCount} try-on{item.tryonCount === 1 ? '' : 's'}</Text>
+                  <Text style={s.meta}>{tryons} try-on{tryons === 1 ? '' : 's'}</Text>
                 </View>
                 <View style={[s.expiry, soon && s.expirySoon]}>
                   <Text style={[s.expiryText, soon && { color: Colors.warning }]}>

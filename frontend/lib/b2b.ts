@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import { supabase } from './supabaseClient'
 import { dataUriToBytes, uuidv4 } from './supabaseStorage'
 import { blobToDataUri } from './dataUri'
@@ -197,6 +199,23 @@ export async function deleteFolder(clientId: string, folderId: string): Promise<
   const { error } = await supabase.from('customer_folders').delete().eq('id', folderId)
   if (error) throw error
 }
+
+// Deleting one result only hides it on this device. Its database row and images
+// stay; other devices still list it, and folder expiry removes it as usual.
+interface HiddenResultsState {
+  hidden: Record<string, string[]> // folder id → hidden result ids
+  hide: (folderId: string, resultId: string) => void
+}
+
+export const useHiddenResults = create<HiddenResultsState>()(persist((set) => ({
+  hidden: {},
+  hide: (folderId, resultId) => set(({ hidden }) => ({
+    hidden: { ...hidden, [folderId]: [...(hidden[folderId] ?? []), resultId] },
+  })),
+}), {
+  name: 'atelier.hiddenResults',
+  storage: createJSONStorage(() => AsyncStorage),
+}))
 
 /** Admin dashboard engagement: staff shared or downloaded a result (spec §6.2). */
 export function reportShared(folderId: string | null, how: 'share' | 'download' | 'download_all') {
