@@ -75,9 +75,20 @@ function StoreBanner() {
   const trialEnd = client.trialEndsAt ? Date.parse(client.trialEndsAt) : null
   const included = plan?.creditsIncluded ?? 0
   const credits = usableCredits(client)
+  const pctLeft = included > 0 ? Math.round((credits / included) * 100) : 0
+  const low = included > 0 && (credits / included) * 100 <= lowPct
 
-  if (notice && (notice.body || notice.subject)) {
-    text = notice.body || notice.subject
+  // A credit notice's saved text holds the count from when it was sent, so it
+  // is written from the live balance instead, and dropped once it no longer applies.
+  const creditNotice = notice?.template === 'low_credits' || notice?.template === 'out_of_credits'
+  const staleNotice = notice?.template === 'low_credits' ? (credits <= 0 || !low)
+    : notice?.template === 'out_of_credits' ? credits > 0
+      : false
+
+  if (notice && !staleNotice && (creditNotice || notice.body || notice.subject)) {
+    text = notice.template === 'low_credits'
+      ? `${pctLeft}% of your plan credits are left (${credits.toLocaleString('en-IN')}). Upgrade or top up your plan so your iPads keep working.`
+      : notice.body || notice.subject
     onClose = () => { dismissNotice(); dismissStoreNotice(notice.id) }
   } else if (client.status === 'trial' && trialEnd && trialEnd < now) {
     tone = 'error'; text = 'Your free trial has ended — choose a plan in Plan & Credits.'
@@ -89,8 +100,8 @@ function StoreBanner() {
       : 'Your plan has expired — renew it in Plan & Credits.'
   } else if (credits <= 0) {
     tone = 'error'; text = 'Credits used up — new try-ons are paused. Renew, upgrade or buy top-up credits in Plan & Credits.'
-  } else if (included > 0 && (credits / included) * 100 <= lowPct) {
-    text = `${Math.round((credits / included) * 100)}% of your credits left — upgrade or buy top-up credits in Plan & Credits.`
+  } else if (low) {
+    text = `${pctLeft}% of your credits left — upgrade or buy top-up credits in Plan & Credits.`
   }
   if (!text) return null
 

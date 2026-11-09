@@ -216,7 +216,6 @@ export default function PlanScreen() {
               per {p.cycle === 'annual' ? 'year' : 'month'} + GST{p.totalInr != null ? ` · ${inr(p.totalInr)} total` : ''}
             </Text>
             <Text style={s.body}>{p.credits.toLocaleString('en-IN')} credits / month</Text>
-            <Text style={s.muted}>{inr(Math.round(p.priceInr / p.credits))} per credit</Text>
             {p.current && <Text style={s.currentTag}>Current plan</Text>}
             {!!p.action && (
               <>
@@ -241,7 +240,7 @@ export default function PlanScreen() {
             <View key={k.id} style={[s.planCard, stackPlans ? s.planCardStack : s.planCardRow]}>
               <Text style={s.planName}>{k.credits.toLocaleString('en-IN')} credits</Text>
               <Text style={s.planPrice} numberOfLines={1}>{inr(k.priceInr)}</Text>
-              <Text style={s.muted}>{inr(Math.round(k.priceInr / k.credits))} per credit + 18% GST · {inr(k.totalInr)} total</Text>
+              <Text style={s.muted}>+ 18% GST · {inr(k.totalInr)} total</Text>
               <TouchableOpacity
                 style={[s.planBtn, !k.allowed && s.btnDisabled]}
                 disabled={!k.allowed}
