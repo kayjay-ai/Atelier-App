@@ -753,10 +753,38 @@ const hp = StyleSheet.create({
   text: { ...Typography.bodySmall, ...Weight.semibold, color: Colors.secondary },
 })
 
+// ─── Phones / tablets vs computers ───────────────────────────────────────────
+/**
+ * A phone or tablet: the iPad / Android apps, or a web browser on a touch
+ * device. iPadOS Safari reports itself as a Mac, so a Mac with touch points
+ * counts as a tablet; so does any browser whose main pointer is a finger.
+ * Touch-screen laptops keep a fine main pointer and stay computers.
+ */
+export function isTouchDevice(): boolean {
+  if (!web) return true
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/iPad|iPhone|iPod|Android|Mobile|Silk|Kindle/i.test(ua)) return true
+  if (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1) return true
+  return !!window.matchMedia?.('(pointer: coarse)').matches
+}
+
+/**
+ * The computer layout: tabs in the top bar, sidebars, toasts at the bottom
+ * edge. Only a web browser on a computer, from Layout.desktop wide — every
+ * phone and tablet (iPad Pro included) keeps the bottom tab bar.
+ */
+export function useDesktopLayout(minWidth: number = Layout.desktop): boolean {
+  const { width } = useWindowDimensions()
+  const [touch] = useState(isTouchDevice)
+  return !touch && width >= minWidth
+}
+
 // ─── Tab bars ────────────────────────────────────────────────────────────────
-// Phones and portrait iPads: the mockups' bottom bar — white, rounded at the
-// top, the current tab a charcoal capsule holding its icon and name.
-// From Layout.desktop: the same tabs sit in the top bar beside the wordmark.
+// Phones and tablets (every iPad, in the app or the browser): the mockups'
+// bottom bar — white, rounded at the top, the current tab a charcoal capsule
+// holding its icon and name. A computer's browser (useDesktopLayout): the same
+// tabs sit in the top bar beside the wordmark.
 export type TabItem = { name: string; title: string; short?: string; icon: IconName }
 
 type TabBarState = { index: number; routes: { key: string; name: string }[] }
@@ -883,10 +911,11 @@ const dropToast = (id: number) => useToasts.setState((s) => ({ items: s.items.fi
 
 export function ToastHost() {
   const items = useToasts((s) => s.items)
-  const { width } = useWindowDimensions()
+  // Above the bottom tab bar on phones and tablets.
+  const desktop = useDesktopLayout()
   if (!items.length) return null
   return (
-    <View style={[t.wrap, { bottom: width >= Layout.desktop ? Space.xl : 104, pointerEvents: 'box-none' }]}>
+    <View style={[t.wrap, { bottom: desktop ? Space.xl : 104, pointerEvents: 'box-none' }]}>
       {items.map((it) => (
         <View key={it.id} style={t.toast} accessibilityLiveRegion="polite" accessibilityRole={it.tone === 'error' ? 'alert' : undefined}>
           <Icon name={it.tone === 'error' ? 'alert' : it.tone === 'info' ? 'info' : 'success'} size={18}

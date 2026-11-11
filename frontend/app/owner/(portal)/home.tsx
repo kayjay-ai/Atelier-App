@@ -11,7 +11,8 @@ import { Card, EmptyState, Icon, PageHeader, type IconName } from '../../../lib/
 import type { MenuItem } from '../../../components/owner/kit'
 
 /** Every row menu starts with View details, so the drawer is reachable from the keyboard. */
-const withDetails = (items: MenuItem[], open: () => void): MenuItem[] => [{ label: 'View details', icon: 'info', onPress: open }, ...items]
+const withDetails = (items: MenuItem[], open: () => void): MenuItem[] =>
+  items.some((i) => i.label === 'View details') ? items : [{ label: 'View details', icon: 'info', onPress: open }, ...items]
 import { Banner, Btn, Chip, RowMenu, Skeleton, StatusPill, WIDE } from '../../../components/owner/kit'
 import { StoreDrawer, type DrawerSection } from '../../../components/owner/StoreDrawer'
 import { storeMenu, storeActions } from '../../../components/owner/storeActions'
@@ -151,6 +152,16 @@ export default function OwnerHome() {
     else set({ sort: key, dir: TEXT_SORTS.includes(key) ? 'asc' : 'desc' })
   }
   const filtered = !!(query.search || query.status.length)
+  const onlyStatus = (...wanted: string[]) =>
+    query.status.length === wanted.length && wanted.every((s) => query.status.includes(s))
+  const selectedCard: 'all' | 'devices' | 'credits' | 'attention' | null =
+    query.search ? null
+      : !query.status.length && !query.sort ? 'all'
+        : !query.sort && onlyStatus(...LIVE) ? 'devices'
+          : query.sort === 'credits' && !query.status.length ? 'credits'
+            : !query.sort && onlyStatus('attention') ? 'attention'
+              : null
+  const showCard = (patch: Partial<Query>) => { setSearchText(''); setQuery({ ...EMPTY, ...patch }) }
   const firstLoad = loading && !page
   const noStores = summary?.totalStores === 0 && !filtered
 
@@ -181,15 +192,15 @@ export default function OwnerHome() {
           )) : (
             <>
               <SummaryCard icon="company" label="Total stores" value={num(summary.totalStores)} sub={breakdown(summary)}
-                active={!filtered && !query.sort} onPress={clearAll} />
+                active={selectedCard === 'all'} onPress={clearAll} />
               <SummaryCard icon="devices" label="Connected devices" value={num(summary.connectedDevices)} sub="Across active stores"
-                active={query.status.length === 2 && LIVE.every((s) => query.status.includes(s))} onPress={() => { setSearchText(''); setQuery({ ...EMPTY, status: LIVE }) }} />
+                active={selectedCard === 'devices'} onPress={() => showCard({ status: LIVE })} />
               <SummaryCard icon="credits" label="Credits used this month" value={num(summary.creditsUsedThisMonth)}
-                sub={`${summary.creditsUsedPct}% of purchased credits`} active={query.sort === 'credits'}
-                onPress={() => set({ sort: 'credits', dir: 'desc' })} />
+                sub={`${summary.creditsUsedPct}% of purchased credits`} active={selectedCard === 'credits'}
+                onPress={() => showCard({ sort: 'credits', dir: 'desc' })} />
               <SummaryCard icon="alert" label="Needs attention" value={num(summary.needsAttention)}
                 sub="Low credits, expired invites or overdue renewals" tone={summary.needsAttention > 0 ? 'warning' : undefined}
-                active={query.status.length === 1 && query.status[0] === 'attention'} onPress={() => { setSearchText(''); setQuery({ ...EMPTY, status: ['attention'] }) }} />
+                active={selectedCard === 'attention'} onPress={() => showCard({ status: ['attention'] })} />
             </>
           )}
         </View>

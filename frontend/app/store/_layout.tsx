@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Linking, useWindowDimensions } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Redirect, router, usePathname } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
@@ -9,15 +9,15 @@ import { SUPPORT_EMAIL } from '../../lib/b2b'
 import { beatNow, signOutStore, startHeartbeat, stopHeartbeat, useHeartbeat } from '../../lib/heartbeat'
 import { Colors, Typography, Space, Layout, Weight } from '../../lib/theme'
 import {
-  AppTabBar, CreditPill, Icon, Loading, PillButton, TextLink, Title, tabScreenOptions, type IconName, type TabItem,
+  AppTabBar, CreditPill, Icon, Loading, PillButton, TextLink, Title, tabScreenOptions, useDesktopLayout, type IconName, type TabItem,
 } from '../../lib/ui'
 import PlanScreen from './plan'
 
 // ─── B2B in-store app shell (/store) ──────────────────────────────────────────
 // Only company logins reach this layout; anyone else is sent back to sign-in.
-// Phones and portrait iPads: the store's name and credits on top, the tabs in
-// the bottom bar. From Layout.desktop (landscape iPads, laptops) the tabs move
-// into the top bar.
+// Phones and every iPad: the store's name and credits on top, the tabs in the
+// bottom bar. A computer's browser (useDesktopLayout): the tabs move into the
+// top bar.
 
 const TABS: TabItem[] = [
   { name: 'index',     title: 'Home',            icon: 'tryOn' },
@@ -162,8 +162,9 @@ function FullScreenMessage({ title, body, icon = 'lock', action }: {
 }
 
 export default function StoreLayout() {
-  const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
+  // A hook: before the early returns below, so it runs on every render.
+  const desktop = useDesktopLayout()
   const account = useAccountStore((s) => s.account)
   const session = useAccountStore((s) => s.session)
   const userId = useAccountStore((s) => s.userId)
@@ -283,7 +284,6 @@ export default function StoreLayout() {
     )
   }
 
-  const desktop = width >= Layout.desktop
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>

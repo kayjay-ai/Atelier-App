@@ -1,12 +1,12 @@
 import { useEffect, type ComponentProps } from 'react'
-import { View, Text, TouchableOpacity, Pressable, Image, StyleSheet, AppState, useWindowDimensions } from 'react-native'
+import { View, Text, TouchableOpacity, Pressable, Image, StyleSheet, AppState } from 'react-native'
 import { Redirect, usePathname, router } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../../../lib/supabaseClient'
 import { signOutOwner, useOwnerStore } from '../../../lib/owner'
 import { Colors, Typography, Space, Radius, Weight } from '../../../lib/theme'
-import { AppTabBar, Badge, Icon, Initials, Loading, Wordmark, type IconName } from '../../../lib/ui'
+import { AppTabBar, Badge, Icon, Initials, Loading, Wordmark, useDesktopLayout, type IconName } from '../../../lib/ui'
 import { Banner, WIDE } from '../../../components/owner/kit'
 
 // ─── Owner portal shell (/owner/home, /add-store, /notifications, /profile) ───
@@ -90,8 +90,8 @@ function BottomBar(props: BottomTabBarProps) {
 }
 
 export default function OwnerPortalLayout() {
-  const { width } = useWindowDimensions()
-  const wide = width >= WIDE
+  // Sidebar on a computer's browser; the bottom bar on phones and tablets.
+  const wide = useDesktopLayout(WIDE)
   const pathname = usePathname()
   const status = useOwnerStore((s) => s.status)
   const error = useOwnerStore((s) => s.error)

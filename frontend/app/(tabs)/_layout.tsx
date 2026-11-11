@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Redirect, router } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
-import { View, StyleSheet, useWindowDimensions } from 'react-native'
+import { View, StyleSheet } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Colors, Space, Layout } from '../../lib/theme'
-import { AppTabBar, CreditPill, Wordmark, tabScreenOptions, type TabItem } from '../../lib/ui'
+import { Colors, Space } from '../../lib/theme'
+import { AppTabBar, CreditPill, Wordmark, tabScreenOptions, useDesktopLayout, type TabItem } from '../../lib/ui'
 import { useAccountStore } from '../../lib/account'
 import { useMembershipStore, useProfileStore, isPremium, creditsLeft } from '../../lib/store'
 import { supabase } from '../../lib/supabaseClient'
 
 // ─── B2C consumer app shell (spec §3) ─────────────────────────────────────────
-// Tabs: Home · Style · Premium · History · Profile. Phones and portrait iPads:
-// the wordmark and credit counter on top, the tabs in the bottom bar. From
-// Layout.desktop the tabs join the wordmark in one top bar. The credit counter
-// is on every tab and opens Premium.
+// Tabs: Home · Style · Premium · History · Profile. Phones and tablets: the
+// wordmark and credit counter on top, the tabs in the bottom bar. A computer's
+// browser (useDesktopLayout): the tabs join the wordmark in one top bar. The
+// credit counter is on every tab and opens Premium.
 
 const TABS: TabItem[] = [
   { name: 'index',   title: 'Home',    icon: 'tryOn' },
@@ -52,8 +52,9 @@ function B2CHeader({ signedIn }: { signedIn: boolean }) {
 }
 
 export default function TabLayout() {
-  const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
+  // A hook: before the early returns below, so it runs on every render.
+  const desktop = useDesktopLayout()
   const account = useAccountStore((s) => s.account)
   // undefined = still checking the session; null = signed out (sent to sign-in).
   const [userId, setUserId] = useState<string | null | undefined>(undefined)
@@ -85,7 +86,6 @@ export default function TabLayout() {
   if (userId === null) return <Redirect href="/auth" />
   if (userId === undefined) return <View style={{ flex: 1, backgroundColor: Colors.bg }} />
 
-  const desktop = width >= Layout.desktop
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>

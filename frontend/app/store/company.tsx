@@ -121,8 +121,8 @@ export default function CompanyScreen() {
           </Card>
 
           <View style={s.device}>
-            {deviceCode && <Text style={s.deviceCode}>This iPad’s device code: {deviceCode}</Text>}
-            <PillButton label="Sign out of this iPad" icon="logout" variant="outline" size="md" onPress={signOut} />
+            {deviceCode && <Text style={s.deviceCode}>This device’s code: {deviceCode}</Text>}
+            <PillButton label="Sign out of this device" icon="logout" variant="outline" size="md" onPress={signOut} />
           </View>
         </View>
       </View>
