@@ -67,6 +67,31 @@ const ICON = {
   clock:       'clock-outline',
   chevron:     'chevron-right',
   link:        'link-variant',
+
+  // Owner portal
+  home:        'home-variant-outline',
+  storePlus:   'store-plus-outline',
+  bell:        'bell-outline',
+  eye:         'eye-outline',
+  eyeOff:      'eye-off-outline',
+  copy:        'content-copy',
+  dots:        'dots-horizontal',
+  chevronDown: 'chevron-down',
+  chevronLeft: 'chevron-left',
+  arrowUp:     'arrow-up',
+  arrowDown:   'arrow-down',
+  devices:     'tablet-cellphone',
+  tablet:      'tablet',
+  credits:     'star-four-points-outline',
+  payment:     'credit-card-outline',
+  gift:        'gift-outline',
+  offer:       'tag-outline',
+  shield:      'shield-check-outline',
+  alert:       'alert-circle-outline',
+  mail:        'email-outline',
+  activity:    'storefront-outline',
+  filter:      'filter-variant',
+  info:        'information-outline',
 } as const
 
 export type IconName = keyof typeof ICON

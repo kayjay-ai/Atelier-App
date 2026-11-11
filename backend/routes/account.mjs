@@ -2,8 +2,9 @@ import express from 'express'
 import { getCreditStatus } from '../lib/credits.mjs'
 import { getMembership, membershipEnabled } from '../lib/membership.mjs'
 import { logAppEvent } from '../lib/clients.mjs'
-import { serviceDb } from '../lib/db.mjs'
+import { serviceDb, isMissingSchema } from '../lib/db.mjs'
 import { callerOf } from '../lib/identity.mjs'
+import { allow, clientIp } from '../lib/rateLimit.mjs'
 
 // Accounts: embed-partner credit status, B2C membership, sign-in helpers,
 // account deletion, and lifecycle events the app reports.
@@ -102,27 +103,20 @@ async function removeUserFolder(db, bucket, userId) {
 // ---------------------------------------------------------------------------
 // POST /api/auth/account-type  { email } → { type: 'company' | 'personal' }
 // Lets the sign-in page show the date-of-birth field to personal accounts only.
-// Unknown emails answer 'personal' (no "does this account exist?" leak); the
+// The current app no longer calls it (the user picks Personal / Company on the
+// sign-in page); it stays for installed builds that still do. Unknown emails answer 'personal' (no "does this account exist?" leak); the
 // answer only decides which fields are shown — routing after sign-in still
 // uses the signed-in account (store_for_user). Rate-limited per IP.
 // ---------------------------------------------------------------------------
 const ACCOUNT_TYPE_LIMIT = 30 // lookups per IP per 10 minutes
-const accountTypeHits = new Map()
 router.post('/api/auth/account-type', async (req, res) => {
   const email = String(req.body?.email ?? '').trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return res.status(400).json({ error: 'Enter a valid email.' })
   }
-  // Behind the reverse proxy (Caddy): the right-most X-Forwarded-For entry is the
-  // one the proxy added (the caller can't forge it); otherwise every user shares one IP.
-  const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-  const ip = fwd[fwd.length - 1] || req.socket?.remoteAddress || 'unknown'
-  const now = Date.now()
-  const hits = (accountTypeHits.get(ip) ?? []).filter((t) => now - t < 10 * 60_000)
-  if (hits.length >= ACCOUNT_TYPE_LIMIT) return res.status(429).json({ error: 'Too many attempts — try again in a few minutes.' })
-  hits.push(now)
-  accountTypeHits.set(ip, hits)
-  if (accountTypeHits.size > 10_000) accountTypeHits.clear() // keep memory bounded
+  if (!allow('account-type', clientIp(req), ACCOUNT_TYPE_LIMIT, 10 * 60_000)) {
+    return res.status(429).json({ error: 'Too many attempts — try again in a few minutes.' })
+  }
 
   const db = serviceDb()
   if (!db) return res.json({ type: 'personal' })
@@ -142,6 +136,10 @@ router.post('/api/account/delete', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Account deletion is not available right now.' })
   if (storeError) return res.status(503).json({ error: 'Account deletion is not available right now.' })
   if (company) return res.status(403).json({ error: 'Company logins are managed by Atelier — contact support.' })
+  // An organization owner's login (owner portal) is managed by Atelier too.
+  const { data: owner, error: ownerErr } = await db.from('b2b_owners').select('owner_id').eq('user_id', user.id).maybeSingle()
+  if (ownerErr && !isMissingSchema(ownerErr)) return res.status(503).json({ error: 'Account deletion is not available right now.' })
+  if (owner) return res.status(403).json({ error: 'This email is an organization owner login, which is managed by Atelier — contact support.' })
   try {
     await removeUserFolder(db, 'user-photos', user.id)
     await removeUserFolder(db, 'try-on-results', user.id)

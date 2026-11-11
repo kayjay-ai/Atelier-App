@@ -260,26 +260,6 @@ export function postEvent(event: AppEvent, data: { folderId?: string; metadata?:
 // ─── B2C account ──────────────────────────────────────────────────────────────
 
 /** Permanently delete the signed-in consumer account (server removes photos + data). */
-/**
- * Sign-in page: is this email a company login or a personal account? Decides
- * whether the date-of-birth field is shown. null = couldn't tell (offline /
- * older backend) — the page then treats it as personal.
- */
-export async function fetchAccountType(email: string): Promise<'company' | 'personal' | null> {
-  try {
-    const res = await fetch(`${BASE}/api/auth/account-type`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    })
-    if (!res.ok) return null
-    const { type } = await res.json()
-    return type === 'company' || type === 'personal' ? type : null
-  } catch {
-    return null
-  }
-}
-
 export async function deleteAccount(): Promise<void> {
   const res = await fetch(`${BASE}/api/account/delete`, {
     method: 'POST',
@@ -403,3 +383,195 @@ export function fetchB2BPaymentStatus(orderId: string): Promise<B2BPaymentStatus
 export function b2bCheckoutUrl(paymentSessionId: string): string {
   return `${BASE}/pay/b2b/checkout?session=${encodeURIComponent(paymentSessionId)}`
 }
+
+// ─── Owner portal (/api/owner/*, backend/routes/owner.mjs) ────────────────────
+
+/** An API refusal with its machine-readable code and any extra fields (e.g. per-field errors). */
+export class ApiError extends Error {
+  status: number
+  code: string | null
+  extra: Record<string, any>
+  constructor(status: number, message: string, code: string | null, extra: Record<string, any>) {
+    super(message)
+    this.status = status
+    this.code = code
+    this.extra = extra
+  }
+}
+
+async function ownerCall<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, auth = true): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(auth ? await authHeaders() : {}) },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+  } catch {
+    throw new ApiError(0, 'Can’t reach Atelier right now. Check your connection and try again.', 'network', {})
+  }
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const { error: _error, code, ...extra } = json ?? {}
+    throw new ApiError(res.status, errorText(json) || `Server error ${res.status}`, typeof code === 'string' ? code : null, extra)
+  }
+  return json as T
+}
+
+export type OwnerPurpose = 'activation' | 'reset'
+export interface OwnerSessionTokens { accessToken: string; refreshToken: string; expiresAt: number; sessionExpiresAt: string }
+/** testCode: only in the API's temporary test mode (email not set up) — shown on screen instead of emailed. */
+export interface CodeSent { maskedEmail: string; resendInSec: number; expiresInSec: number; testCode?: string }
+
+export const ownerVerify = (orgCode: string, email: string, purpose: OwnerPurpose) =>
+  ownerCall<CodeSent>('POST', purpose === 'reset' ? '/api/owner/forgot' : '/api/owner/activate/verify', { org_code: orgCode, email }, false)
+export const ownerResendCode = (email: string, purpose: OwnerPurpose) =>
+  ownerCall<CodeSent>('POST', '/api/owner/otp/resend', { email, purpose }, false)
+export const ownerConfirmCode = (email: string, code: string, purpose: OwnerPurpose) =>
+  ownerCall<{ token: string; expiresInSec: number }>('POST', '/api/owner/otp/confirm', { email, code, purpose }, false)
+export const ownerTokenStatus = (token: string) =>
+  ownerCall<{ valid: boolean; reason?: 'token_expired' | 'already_active'; purpose?: OwnerPurpose }>('POST', '/api/owner/token/status', { token }, false)
+export const ownerSetPassword = (token: string, password: string) =>
+  ownerCall<{ session: OwnerSessionTokens }>('POST', '/api/owner/password', { token, password }, false)
+export const ownerLogin = (email: string, password: string, remember: boolean) =>
+  ownerCall<{ session: OwnerSessionTokens }>('POST', '/api/owner/login', { email, password, remember }, false)
+export const ownerLogout = () => ownerCall<{ ok: true }>('POST', '/api/owner/logout', {})
+
+export type OwnerNotificationCategory = 'purchases' | 'payments' | 'store_activity' | 'deals' | 'gift_cards' | 'account'
+export interface NotifyPrefs {
+  categories: Record<OwnerNotificationCategory, boolean>
+  email: boolean
+  inApp: true
+}
+export interface OwnerProfile {
+  owner: { id: string; name: string; email: string; phone: string; activatedAt: string | null }
+  organization: { id: string; name: string; legalName: string; logoUrl: string | null; code: string }
+  totalStores: number
+  notifyPrefs: NotifyPrefs
+}
+export const fetchOwnerMe = () => ownerCall<OwnerProfile & { unread: number }>('GET', '/api/owner/me')
+export const updateOwnerProfile = (patch: { name?: string; phone?: string; notifyPrefs?: Partial<NotifyPrefs> }) =>
+  ownerCall<OwnerProfile>('PATCH', '/api/owner/profile', patch)
+export const changeOwnerPassword = (current: string, next: string) =>
+  ownerCall<{ ok: true }>('POST', '/api/owner/profile/password', { current, next })
+
+export interface OwnerSession { id: string; device: string; createdAt: string; lastActiveAt: string; expiresAt: string; remember: boolean; current: boolean }
+export const fetchOwnerSessions = () => ownerCall<{ sessions: OwnerSession[] }>('GET', '/api/owner/sessions')
+export const signOutOtherOwnerSessions = () => ownerCall<{ ok: true }>('DELETE', '/api/owner/sessions')
+
+export type OwnerStoreStatus = 'invited' | 'pending' | 'active' | 'low_credits' | 'expired' | 'invite_expired' | 'deactivated'
+export interface OwnerStoreRow {
+  id: string
+  name: string
+  city: string
+  state: string
+  address: string
+  pincode: string
+  location: string
+  managerName: string
+  managerEmail: string
+  managerPhone: string
+  status: OwnerStoreStatus
+  needsAttention: boolean
+  emailNotDelivered: boolean
+  devices: number
+  packageName: string | null
+  creditsUsed: number
+  creditsTotal: number
+  usableCredits: number
+  topupCredits: number
+  lastPaymentAt: string | null
+  renewalAt: string | null
+  trialEndsAt: string | null
+  createdAt: string
+  invitedAt: string | null
+  activatedAt: string | null
+  deactivatedAt: string | null
+  invite: { id: string; status: string; sentAt: string; expiresAt: string; emailStatus: string } | null
+}
+export interface OwnerSummary {
+  totalStores: number
+  byStatus: Record<OwnerStoreStatus, number>
+  connectedDevices: number
+  creditsUsedThisMonth: number
+  creditsUsedPct: number
+  needsAttention: number
+}
+export type OwnerSortKey = 'name' | 'location' | 'manager' | 'status' | 'devices' | 'package' | 'credits' | 'lastPayment' | 'created'
+export interface OwnerStoreQuery { search?: string; status?: string[]; sort?: OwnerSortKey | null; dir?: 'asc' | 'desc'; page?: number }
+export interface OwnerStorePage { stores: OwnerStoreRow[]; total: number; page: number; pageSize: number; pages: number }
+export interface OwnerStoreDetail {
+  store: OwnerStoreRow
+  devices: { id: string; name: string; type: string; lastActiveAt: string | null; online: boolean; blocked: boolean }[]
+  credits: { packageName: string | null; packageCredits: number; used: number; remaining: number; topup: number; startsAt: string | null; endsAt: string | null }
+  usage: { day: string; used: number }[]
+  payments: { id: string; date: string; package: string; amount: number; currency: string; method: string | null; last4: string | null; status: 'paid' | 'failed' | 'on_hold'; invoiceUrl: string | null }[]
+}
+export interface AddStoreInput {
+  storeName: string
+  city: string
+  state: string
+  address: string
+  pincode: string
+  managerName: string
+  managerEmail: string
+  countryCode: string
+  managerPhone: string
+  note: string
+}
+/** testInviteUrl: only in the API's temporary test mode (email not set up) — the link to pass on by hand. */
+type InviteResult = { store: OwnerStoreRow; emailStatus: 'sent' | 'failed' | 'skipped'; testInviteUrl?: string }
+
+export const fetchOwnerSummary = () => ownerCall<OwnerSummary>('GET', '/api/owner/dashboard/summary')
+export function fetchOwnerStores(q: OwnerStoreQuery): Promise<OwnerStorePage> {
+  const params = new URLSearchParams()
+  if (q.search) params.set('search', q.search)
+  if (q.status?.length) params.set('status', q.status.join(','))
+  if (q.sort) params.set('sort', q.sort)
+  if (q.dir) params.set('dir', q.dir)
+  if (q.page) params.set('page', String(q.page))
+  const qs = params.toString()
+  return ownerCall<OwnerStorePage>('GET', `/api/owner/stores${qs ? `?${qs}` : ''}`)
+}
+const storePath = (id: string) => `/api/owner/stores/${encodeURIComponent(id)}`
+export const fetchOwnerStore = (id: string) => ownerCall<OwnerStoreDetail>('GET', storePath(id))
+export const addOwnerStore = (input: AddStoreInput) => ownerCall<InviteResult>('POST', '/api/owner/stores', input)
+export const resendStoreInvite = (id: string) => ownerCall<InviteResult>('POST', `${storePath(id)}/invite/resend`, {})
+export const fetchStoreInviteLink = (id: string) => ownerCall<{ url: string; expiresAt: string }>('GET', `${storePath(id)}/invite/link`)
+export const changeStoreInviteEmail = (id: string, email: string) => ownerCall<InviteResult>('PATCH', `${storePath(id)}/invite`, { email })
+export const revokeStoreInvite = (id: string) => ownerCall<{ ok: true }>('DELETE', `${storePath(id)}/invite`)
+export const deleteInvitedStore = (id: string) => ownerCall<{ ok: true }>('DELETE', storePath(id))
+export const deactivateOwnerStore = (id: string) => ownerCall<{ store: OwnerStoreRow }>('POST', `${storePath(id)}/deactivate`, {})
+
+export interface OwnerNotificationLink { screen: 'store' | 'profile' | 'offer' | 'gift_card' | 'add-store'; storeId?: string; section?: string }
+export interface OwnerNotification {
+  id: string
+  category: OwnerNotificationCategory
+  title: string
+  body: string
+  storeId: string | null
+  storeName: string | null
+  link: OwnerNotificationLink | null
+  data: { expiresAt?: string | null; cta?: string | null; code?: string | null; amountInr?: number | null } | null
+  read: boolean
+  createdAt: string
+}
+export function fetchOwnerNotifications(q: { category?: OwnerNotificationCategory | null; unreadOnly?: boolean; cursor?: string | null }) {
+  const params = new URLSearchParams()
+  if (q.category) params.set('category', q.category)
+  if (q.unreadOnly) params.set('unread_only', 'true')
+  if (q.cursor) params.set('cursor', q.cursor)
+  const qs = params.toString()
+  return ownerCall<{ items: OwnerNotification[]; nextCursor: string | null }>('GET', `/api/owner/notifications${qs ? `?${qs}` : ''}`)
+}
+export const fetchOwnerUnread = () => ownerCall<{ count: number }>('GET', '/api/owner/notifications/unread-count')
+export const setOwnerNotificationRead = (id: string, read: boolean) =>
+  ownerCall<{ ok: true }>('PATCH', `/api/owner/notifications/${encodeURIComponent(id)}`, { read })
+export const markAllOwnerNotificationsRead = () => ownerCall<{ ok: true }>('POST', '/api/owner/notifications/read-all', {})
+export const deleteOwnerNotification = (id: string) => ownerCall<{ ok: true }>('DELETE', `/api/owner/notifications/${encodeURIComponent(id)}`)
+
+// ─── Store manager: accepting an owner's invite (/invite?token=…) ─────────────
+export interface StoreInvite { storeName: string; city: string; organization: string; managerName: string; managerEmail: string; hasAccount: boolean; expiresAt: string }
+export const fetchStoreInvite = (token: string) => ownerCall<StoreInvite>('GET', `/api/invites/${encodeURIComponent(token)}`, undefined, false)
+export const acceptStoreInvite = (token: string, password?: string) =>
+  ownerCall<{ email: string; storeName: string; hadAccount: boolean }>('POST', `/api/invites/${encodeURIComponent(token)}/accept`, { password }, false)

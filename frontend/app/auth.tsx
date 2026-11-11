@@ -3,25 +3,77 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   SafeAreaView, ScrollView, ActivityIndicator, Platform,
 } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
 import { supabase } from '../lib/supabaseClient'
 import { readAuthReturn } from '../lib/oauthReturn'
-import { useAccountStore, homeFor } from '../lib/account'
+import { useAccountStore, homeFor, isCompanyLogin } from '../lib/account'
 import { fetchProfile, upsertProfile } from '../lib/supabaseStorage'
-import { fetchAccountType } from '../lib/api'
+import { fetchOwnerMe } from '../lib/api'
+import { takePrefill } from '../lib/owner'
 import { Colors, Typography, Space, Radius } from '../lib/theme'
 import { DateOfBirthField, parseDob, type DobValue } from '../components/DateOfBirthField'
+import { AccountKindSwitch } from '../components/AccountKindSwitch'
 
 const EMPTY_DOB: DobValue = { day: '', month: '', year: '' }
-const looksLikeEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim())
 
-// The server's account type — never the sign-in method — picks the interface:
-// company logins open the B2B store app, everyone else the B2C app. A personal
+/** Picked at the top of the page: Personal opens the B2C app, Company the B2B store app. */
+type AccountKind = 'personal' | 'company'
+
+/** The signed-in login doesn't match the option picked — shown as is, the user is signed out. */
+class WrongKindError extends Error {}
+
+// Google / Apple on the web leave this page and come back to it, so the option
+// picked is kept for that one round trip.
+const KIND_KEY = 'atelier.authKind'
+function rememberKind(kind: AccountKind) {
+  if (Platform.OS !== 'web') return
+  try { window.sessionStorage.setItem(KIND_KEY, kind) } catch {}
+}
+function takeRememberedKind(): AccountKind | null {
+  if (Platform.OS !== 'web') return null
+  try {
+    const kind = window.sessionStorage.getItem(KIND_KEY)
+    window.sessionStorage.removeItem(KIND_KEY)
+    return kind === 'personal' || kind === 'company' ? kind : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The option picked must match the login: only a store login (decided by the
+ * database) may open the store app, and a store login can't be used as a
+ * personal account. On a mismatch the user is signed out with a clear message.
+ */
+async function checkKind(kind: AccountKind): Promise<void> {
+  const { data } = await supabase.auth.getSession()
+  const company = await isCompanyLogin(data.session?.user?.email)
+  if (company === (kind === 'company')) return
+  // This device only: a store login's other iPads must stay signed in.
+  await supabase.auth.signOut({ scope: 'local' })
+  throw new WrongKindError(company
+    ? 'This is a store login. Choose “Company” › “Store staff” above to open your store app.'
+    : 'This email isn’t a store login. Owners: choose “Owner” above. Shoppers: choose “Personal”.')
+}
+
+/** An already signed-in owner (owner portal session) goes back to the portal. */
+async function isOwnerSession(): Promise<boolean> {
+  try {
+    await fetchOwnerMe()
+    return true
+  } catch {
+    return false
+  }
+}
+
+// `as` = the option picked on this page (Personal / Company). Without it (an
+// already signed-in session, e.g. a reload) the account decides. A personal
 // account saves the date of birth typed on this page; one still missing a date
 // of birth (and the email form wasn't used, e.g. Google) or a name goes through
 // /welcome (spec §3.1). Returns 'needsDob' when the email form must ask for it.
-async function enterApp(opts: { dob?: string; fromForm?: boolean } = {}): Promise<'needsDob' | void> {
+async function enterApp(opts: { as?: AccountKind; dob?: string; fromForm?: boolean } = {}): Promise<'needsDob' | void> {
+  if (opts.as) await checkKind(opts.as)
   const account = await useAccountStore.getState().load()
   if (account?.type !== 'b2b_company') {
     const { userId, email } = useAccountStore.getState()
@@ -64,6 +116,8 @@ function showApple(): boolean {
 type Mode = 'login' | 'signup' | 'verify'
 
 export default function AuthScreen() {
+  // ?as=company opens with Company › Store staff picked (the owner login's switch links here).
+  const params = useLocalSearchParams<{ as?: string }>()
   const [checking, setChecking] = useState(true)
   const [mode, setMode]       = useState<Mode>('login')
   const [email, setEmail]     = useState('')
@@ -74,22 +128,12 @@ export default function AuthScreen() {
   const [error, setError]     = useState<string | null>(null)
   const [info, setInfo]       = useState<string | null>(null)
   const [dob, setDob]         = useState<DobValue>(EMPTY_DOB)
-  // Sign-in: is the typed email a company login or a personal account?
-  const [emailType, setEmailType] = useState<'unknown' | 'company' | 'personal'>('unknown')
+  const [kind, setKind]       = useState<AccountKind>(params.as === 'company' ? 'company' : 'personal')
   // Signed in, but this personal account has no date of birth yet.
   const [dobNeeded, setDobNeeded] = useState(false)
 
-  useEffect(() => {
-    if (mode !== 'login' || !looksLikeEmail(email)) { setEmailType('unknown'); return }
-    let cancelled = false
-    const t = setTimeout(async () => {
-      const type = await fetchAccountType(email.trim())
-      if (!cancelled) setEmailType(type ?? 'personal') // can't tell → show the field
-    }, 450)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [email, mode])
-
-  const showDob = mode === 'signup' || (mode === 'login' && (emailType === 'personal' || dobNeeded))
+  const company = kind === 'company'
+  const showDob = !company && mode !== 'verify'
   const dobTyped = !!(dob.day || dob.month || dob.year)
 
   /** The typed date of birth as YYYY-MM-DD; throws a friendly error if it's invalid. */
@@ -101,21 +145,37 @@ export default function AuthScreen() {
   }
 
   useEffect(() => {
-    // Also covers returning from Google / Apple: the session arrives in the URL.
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
-        if (session) await enterApp()
-        else setChecking(false)
-      })
-      .catch((e) => {
-        setError(`Couldn't load your account — ${e?.message ?? 'please try again'}.`)
-        setChecking(false)
-      })
+    // Also covers returning from Google / Apple on the web: the session arrives
+    // in the URL, and the option picked before leaving was remembered.
+    const picked = takeRememberedKind()
+    if (picked) setKind(picked)
+    // A store manager who just accepted an owner's invite (/invite) lands here.
+    const storeEmail = takePrefill('storeEmail')
+    if (storeEmail) { setKind('company'); setEmail(storeEmail) }
+    const notice = takePrefill('notice')
+    if (notice) setInfo(notice)
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session && !picked && await isOwnerSession()) { router.replace('/owner/home'); return }
+        if (session) { await enterApp({ as: picked ?? undefined }); return }
+      } catch (e: any) {
+        setError(e instanceof WrongKindError ? e.message : `Couldn't load your account — ${e?.message ?? 'please try again'}.`)
+      }
+      setChecking(false)
+    })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function switchMode(next: Mode) {
     setMode(next); setError(null); setInfo(null); setCode('')
     if (next !== 'verify') setDobNeeded(false) // verify keeps the signup date of birth
+  }
+
+  // Company logins are created by Atelier, so Company is sign-in only.
+  function switchKind(next: AccountKind) {
+    if (next === kind) return
+    setKind(next); setError(null); setInfo(null); setDobNeeded(false)
+    if (next === 'company' && mode !== 'login') { setMode('login'); setCode('') }
   }
 
   async function submit() {
@@ -127,7 +187,7 @@ export default function AuthScreen() {
         const dateOfBirth = dobIso(dobNeeded)
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
         if (error) throw error
-        if (await enterApp({ dob: dateOfBirth, fromForm: true }) === 'needsDob') {
+        if (await enterApp({ as: kind, dob: dateOfBirth, fromForm: !company }) === 'needsDob') {
           setDobNeeded(true)
           setError('Add your date of birth to finish signing in — we only ask once.')
         }
@@ -140,14 +200,14 @@ export default function AuthScreen() {
           options: { emailRedirectTo: oauthRedirect(), data: { date_of_birth: dateOfBirth } },
         })
         if (error) throw error
-        if (data.session) { await enterApp({ dob: dateOfBirth }); return } // email confirmation switched off
+        if (data.session) { await enterApp({ as: 'personal', dob: dateOfBirth }); return } // email confirmation switched off
         setMode('verify')
         setInfo(`We sent a verification code to ${email.trim()}.`)
       } else {
         const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'signup' })
         if (error) throw error
         const parsed = parseDob(dob)
-        await enterApp({ dob: 'iso' in parsed ? parsed.iso : undefined })
+        await enterApp({ as: 'personal', dob: 'iso' in parsed ? parsed.iso : undefined })
       }
     } catch (e: any) {
       setError(e?.message ?? 'Something went wrong — please try again.')
@@ -168,8 +228,9 @@ export default function AuthScreen() {
     setError(null)
     try {
       if (Platform.OS === 'web') {
+        rememberKind(kind)
         const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: oauthRedirect() } })
-        if (error) throw error
+        if (error) { takeRememberedKind(); throw error }
         return // the browser leaves for the provider and comes back to /auth
       }
       // iPad / phone: sign in inside a secure browser sheet; the provider returns
@@ -195,11 +256,11 @@ export default function AuthScreen() {
       } else {
         throw new Error('Sign-in did not complete. Please try again.')
       }
-      await enterApp()
+      await enterApp({ as: kind })
       setOauthLoading(null)
     } catch (e: any) {
       const name = provider === 'google' ? 'Google' : 'Apple'
-      setError(e?.message?.toLowerCase().includes('provider')
+      setError(e instanceof WrongKindError ? e.message : e?.message?.toLowerCase().includes('provider')
         ? `${name} sign-in isn't switched on yet — use email for now.`
         : e?.message ?? `${name} sign-in failed.`)
       setOauthLoading(null)
@@ -214,12 +275,15 @@ export default function AuthScreen() {
     )
   }
 
-  const title = mode === 'login' ? 'Welcome back.' : mode === 'signup' ? 'Create your account.' : 'Check your email.'
-  const subtitle = mode === 'login'
-    ? 'Sign in to see your fittings, style report and credits.'
-    : mode === 'signup'
-      ? 'New accounts start with 3 free try-ons.'
-      : 'Enter the code from the email to finish signing up. You can also tap the link in the email.'
+  const title = company ? 'Store sign-in.'
+    : mode === 'login' ? 'Welcome back.' : mode === 'signup' ? 'Create your account.' : 'Check your email.'
+  const subtitle = company
+    ? 'Sign in with your store login — the email your owner invited, or the one Atelier set up. This opens your store app.'
+    : mode === 'login'
+      ? 'Sign in to see your fittings, style report and credits.'
+      : mode === 'signup'
+        ? 'New accounts start with 3 free try-ons.'
+        : 'Enter the code from the email to finish signing up. You can also tap the link in the email.'
 
   return (
     <SafeAreaView style={s.safe}>
@@ -231,9 +295,19 @@ export default function AuthScreen() {
             <Text style={s.brandMark}>ATELIER</Text>
           </View>
 
+          {mode !== 'verify' && (
+            <AccountKindSwitch
+              value={company ? 'store' : 'personal'}
+              onChange={(role) => {
+                if (role === 'owner') { router.replace('/owner/login'); return }
+                switchKind(role === 'store' ? 'company' : 'personal')
+              }}
+              disabled={loading || !!oauthLoading}
+            />
+          )}
+
           <Text style={s.title}>{title}</Text>
           <Text style={s.subtitle}>{subtitle}</Text>
-          {mode === 'login' && <Text style={s.staffHint}>Store staff: sign in with your company email.</Text>}
 
           {mode !== 'verify' && (
             <>
@@ -270,7 +344,7 @@ export default function AuthScreen() {
                 style={s.input}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="you@example.com"
+                placeholder={company ? 'store@yourcompany.com' : 'you@example.com'}
                 placeholderTextColor={Colors.textFaint}
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -289,10 +363,6 @@ export default function AuthScreen() {
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                 onSubmitEditing={submit}
               />
-
-              {mode === 'login' && emailType === 'company' && !dobNeeded && (
-                <Text style={s.fieldHint}>Company login — this opens your store app.</Text>
-              )}
 
               {showDob && (
                 <View style={dobNeeded && s.dobNeeded}>
@@ -347,6 +417,12 @@ export default function AuthScreen() {
             <TouchableOpacity style={s.toggleRow} onPress={() => switchMode('signup')}>
               <Text style={s.toggleText}>Wrong email? <Text style={s.toggleLink}>Go back</Text></Text>
             </TouchableOpacity>
+          ) : company ? (
+            <View style={s.toggleRow}>
+              <Text style={[s.toggleText, { textAlign: 'center' }]}>
+                No store login yet? Ask your owner to invite you from the owner portal, or contact Atelier support.
+              </Text>
+            </View>
           ) : (
             <TouchableOpacity style={s.toggleRow} onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
               <Text style={s.toggleText}>
@@ -375,7 +451,6 @@ const s = StyleSheet.create({
 
   title:    { ...Typography.h1, marginBottom: Space.sm },
   subtitle: { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 22, marginBottom: Space.lg },
-  staffHint: { ...Typography.caption, color: Colors.textFaint, marginTop: -Space.md, marginBottom: Space.lg },
 
   oauthBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

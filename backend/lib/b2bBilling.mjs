@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { cashfreeConfigured, cashfreeMode, createOrder, getOrder, normalizePhone } from './cashfree.mjs'
 import { serviceDb, isMissingSchema } from './db.mjs'
+import { onStorePaid } from './ownerNotify.mjs'
 
 // =============================================================================
 // B2B in-app payments — a store pays for a plan or a credit top-up through
@@ -366,7 +367,10 @@ export async function verifyAndApplyB2BOrder(orderId, { storeId } = {}) {
       console.error(`[Atelier] b2b order ${orderId}: PAID but held for review`, JSON.stringify(data.result))
       return { status: 'review', result: null }
     }
-    if (data?.applied) console.log(`[Atelier] b2b order ${orderId}: applied`, JSON.stringify(data.result))
+    if (data?.applied) {
+      console.log(`[Atelier] b2b order ${orderId}: applied`, JSON.stringify(data.result))
+      onStorePaid(orderId) // the owner's feed: "Store A bought …"
+    }
     return { status: 'paid', result: data?.result ?? null }
   }
   if (cfStatus === 'EXPIRED' || cfStatus === 'TERMINATED') {
@@ -377,3 +381,24 @@ export async function verifyAndApplyB2BOrder(orderId, { storeId } = {}) {
 }
 
 export const isB2BOrderId = (orderId) => typeof orderId === 'string' && orderId.startsWith('b2b_')
+
+/**
+ * Keep how a store paid (from the Cashfree webhook's payment object) for the
+ * owner's payment history: the method group and, for cards, the last 4 digits
+ * only. Best-effort; never throws.
+ */
+export async function recordPaymentMethod(orderId, payment) {
+  const supabase = serviceDb()
+  if (!supabase || !isB2BOrderId(orderId) || !payment) return
+  const group = typeof payment.payment_group === 'string' ? payment.payment_group.slice(0, 40) : null
+  const card = payment.payment_method?.card?.card_number
+  const last4 = typeof card === 'string' && /\d{4}$/.test(card) ? card.slice(-4) : null
+  if (!group && !last4) return
+  try {
+    const { error } = await supabase.from('b2b_payments')
+      .update({ payment_method: group, method_last4: last4 }).eq('order_id', orderId)
+    if (error && !isMissingSchema(error)) throw error
+  } catch (err) {
+    console.warn('[Atelier] recording the payment method failed:', err?.message)
+  }
+}

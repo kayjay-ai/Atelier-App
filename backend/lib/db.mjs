@@ -28,6 +28,18 @@ export function serviceDb() {
   return client
 }
 
+/**
+ * A fresh, throwaway client for password sign-ins made by the server (owner
+ * login). Signing in changes a client's own auth state, so this is never the
+ * shared serviceDb() client. null when Supabase isn't configured.
+ */
+export function passwordAuthClient() {
+  const url = supabaseUrl()
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+  if (!url || !key) return null
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } })
+}
+
 /** True when a PostgREST / Postgres error means a migration hasn't been applied (missing column / table / function). */
 export function isMissingSchema(err) {
   return !!err && (/^(42703|42P01|42883|PGRST20[0-5])$/.test(String(err.code ?? '')) ||

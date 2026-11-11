@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAccountStore } from '../lib/account'
 import { useStoreSession } from '../lib/b2b'
 import { stopHeartbeat } from '../lib/heartbeat'
+import { useOwnerStore } from '../lib/owner'
 import { useProfileStore, useGarmentStore, useMembershipStore, useTryOnCacheStore } from '../lib/store'
 
 export default function RootLayout() {
@@ -23,6 +24,7 @@ export default function RootLayout() {
         useGarmentStore.getState().clear()
         useMembershipStore.getState().setMembership(null)
         useTryOnCacheStore.getState().clear()
+        useOwnerStore.getState().clear()
       }
     })
     return () => subscription.unsubscribe()
@@ -37,6 +39,8 @@ export default function RootLayout() {
         <Stack.Screen name="welcome" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="store"  options={{ headerShown: false }} />
+        <Stack.Screen name="owner"  options={{ headerShown: false }} />
+        <Stack.Screen name="invite" options={{ headerShown: false }} />
       </Stack>
     </View>
   )

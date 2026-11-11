@@ -1,7 +1,8 @@
 import { cashfreeConfigured, cashfreeMode, createOrder, getOrder, normalizePhone, verifyWebhookSignature } from './cashfree.mjs'
 import { purchaseFor } from './pricing.mjs'
 import { createPurchase, getPurchaseUser, grantCredits } from './membership.mjs'
-import { BillingError, verifyAndApplyB2BOrder, isB2BOrderId } from './b2bBilling.mjs'
+import { BillingError, verifyAndApplyB2BOrder, isB2BOrderId, recordPaymentMethod } from './b2bBilling.mjs'
+import { onStorePaymentFailed } from './ownerNotify.mjs'
 
 // =============================================================================
 // Cashfree payments, for two kinds of product behind one interface:
@@ -109,6 +110,14 @@ export async function handleWebhook({ rawBody, timestamp, signature }) {
     String(payment.payment_status || '').toUpperCase() === 'SUCCESS' ||
     String(order.order_status || '').toUpperCase() === 'PAID'
   console.log(`[Atelier] payments/webhook: verified type=${event?.type} order=${orderId} success=${success}`)
+
+  // Store payments: the owner portal shows how they paid, and hears about failures.
+  if (isB2BOrderId(orderId)) {
+    if (success) await recordPaymentMethod(orderId, payment)
+    else if (/PAYMENT_FAILED/i.test(event?.type || '') || String(payment.payment_status || '').toUpperCase() === 'FAILED') {
+      await onStorePaymentFailed(orderId, payment.cf_payment_id ? String(payment.cf_payment_id) : null)
+    }
+  }
 
   const kind = success && orderId ? kindOf(orderId) : null
   if (kind) {

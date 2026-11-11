@@ -12,6 +12,19 @@ these terms; when one changes meaning, update it here.
   shared by every iPad. `b2b_stores`. Older code calls the store the "client"
   (`clientId` is the store id).
 - **Device**: one registered iPad of a store. `b2b_devices`.
+- **Owner**: the person who runs a company (the "Organization" in the owner portal
+  flow doc). Signs in to the owner portal (`/owner`) to invite stores and follow
+  their status, devices, credits and payments. One per company. `b2b_owners`,
+  `backend/lib/ownerAuth.mjs`.
+- **Store code**: the 4-letter code Atelier gives an owner for activation
+  (`b2b_companies.company_code`, the "Organization code"). The owner's registered
+  email is `b2b_companies.manager_email`.
+- **Store manager**: the person a store's login belongs to. An owner invites them by
+  email; the store's login (`b2b_stores.store_email`) is that email, so one email
+  manages one store. `b2b_store_invites`, `backend/lib/ownerStores.mjs`.
+- **Owner status**: a store as the owner sees it: invited, pending, active, low
+  credits, expired, invite expired or deactivated. Computed only by the
+  `b2b_owner_stores` view (`supabase/migrations/owner-portal.sql`).
 - **Embed partner**: a website that embeds Atelier (white-label iframe). Pays per AI
   call from its own pool. `companies` + `credit_ledger`, `backend/lib/credits.mjs`.
   (Not the same as a B2B company.)

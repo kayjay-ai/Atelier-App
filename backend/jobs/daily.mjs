@@ -4,6 +4,7 @@ import { getSettings, logAppEvent } from '../lib/clients.mjs'
 import { sendNotification } from '../lib/notify.mjs'
 import { serviceDb } from '../lib/db.mjs'
 import { reconcilePayments } from './reconcile.mjs'
+import { ownerSweep } from '../lib/ownerNotify.mjs'
 
 // =============================================================================
 // Daily maintenance (Admin spec §5.7, §5.9, §8). Safe to run more often — every
@@ -15,6 +16,8 @@ import { reconcilePayments } from './reconcile.mjs'
 //   2. Auto-suspend stores whose trial ended or whose plan is past renewal +
 //      grace days (expire_b2b_stores).
 //   3. Automatic credit / plan-ending notifications for stores and B2C users.
+//   4. Payment reconcile, then the owner portal's notifications (expired
+//      invites, low credits, ended packages, new devices) and its clean-up.
 // =============================================================================
 
 const BUCKET = 'customer-photos'
@@ -131,6 +134,7 @@ export async function runDailyJob() {
   await step('storeNotifications', () => notifyCompanies(db, settings))
   await step('consumerNotifications', () => notifyConsumers(db, settings))
   await step('paymentsReconciled', () => reconcilePayments())
+  await step('ownerNotifications', () => ownerSweep())
   console.log('[Atelier] daily job finished:', JSON.stringify(report))
   return report
 }

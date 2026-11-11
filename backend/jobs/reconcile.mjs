@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url'
 import { serviceDb } from '../lib/db.mjs'
 import { cashfreeConfigured } from '../lib/cashfree.mjs'
 import { kindOf } from '../lib/payments.mjs'
+import { ownerSweep } from '../lib/ownerNotify.mjs'
 
 // =============================================================================
 // Payment safety net. A paid order is normally applied by Cashfree's webhook or
@@ -60,9 +61,16 @@ export async function reconcilePayments() {
 
 // `npm run job:reconcile` (from the repo root). Loads .env only when run as a
 // script: importing this module (jobs/daily.mjs) must not change the environment.
+// The same 30-minute run also posts the owner portal's timed notifications
+// (expired invites, low credits, ended packages, new devices — lib/ownerNotify.mjs).
 if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
   import('dotenv/config')
-    .then(() => reconcilePayments())
-    .then((r) => { console.log('[Atelier] reconcile finished:', JSON.stringify(r)); process.exit(r.failed ? 1 : 0) })
+    .then(async () => {
+      const r = await reconcilePayments()
+      console.log('[Atelier] reconcile finished:', JSON.stringify(r))
+      const owner = await ownerSweep().catch((err) => ({ error: err?.message ?? String(err) }))
+      console.log('[Atelier] owner sweep finished:', JSON.stringify(owner))
+      process.exit(r.failed || owner.error ? 1 : 0)
+    })
     .catch((err) => { console.error(err); process.exit(1) })
 }

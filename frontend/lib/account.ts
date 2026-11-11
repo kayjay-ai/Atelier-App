@@ -76,19 +76,31 @@ export function usableCredits(client: Client): number {
   return client.usableCredits ?? client.creditsBalance
 }
 
-/** Resolve the signed-in user's account. Throws on a real (network/DB) failure. */
-export async function fetchAccount(userId: string, email?: string | null): Promise<Account> {
-  // RLS returns at most the caller's own store (matched on their confirmed
-  // email). The email filter too, so routing stays right even before RLS is on.
-  if (!email) return { type: 'b2c_customer' }
+// RLS returns at most the caller's own store (matched on their confirmed
+// email). The email filter too, so routing stays right even before RLS is on.
+// null = not a store login (or the B2B tables aren't there yet).
+async function storeRowFor(email: string | null | undefined, cols: string): Promise<any | null> {
+  if (!email) return null
   const pattern = email.trim().replace(/[\\%_]/g, (ch) => `\\${ch}`) // ilike = case-insensitive, exact
-  const byEmail = (cols: string) =>
-    supabase.from('b2b_stores').select(cols).ilike('store_email', pattern).maybeSingle<any>()
-  const { data: row, error } = await byEmail(STORE_SELECT)
+  const { data, error } = await supabase.from('b2b_stores').select(cols).ilike('store_email', pattern).maybeSingle<any>()
   if (error) {
-    if (isMissingTable(error.message)) return { type: 'b2c_customer' }
+    if (isMissingTable(error.message)) return null
     throw error
   }
+  return data ?? null
+}
+
+/**
+ * Is the signed-in email a store (B2B) login? The same check fetchAccount
+ * routes on, without loading the store. Throws on a real (network/DB) failure.
+ */
+export async function isCompanyLogin(email: string | null | undefined): Promise<boolean> {
+  return !!(await storeRowFor(email, 'store_id'))
+}
+
+/** Resolve the signed-in user's account. Throws on a real (network/DB) failure. */
+export async function fetchAccount(userId: string, email?: string | null): Promise<Account> {
+  const row = await storeRowFor(email, STORE_SELECT)
   if (!row) return { type: 'b2c_customer' }
 
   const client = toClient(row, await storeState(row))

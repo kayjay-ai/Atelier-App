@@ -1,6 +1,8 @@
 import express from 'express'
 import crypto from 'crypto'
 import { sendNotification } from '../lib/notify.mjs'
+import { CATEGORIES, notifyOwner } from '../lib/ownerNotify.mjs'
+import { serviceDb } from '../lib/db.mjs'
 import { runDailyJob } from '../jobs/daily.mjs'
 
 const router = express.Router()
@@ -51,4 +53,41 @@ router.post('/api/admin/notify', async (req, res) => {
     })
   }
   return res.json({ sent: results.filter((r) => r.sent).length, results })
+})
+
+// POST /api/admin/owner-notify — Atelier posts to owners' Notifications feed:
+// deals & offers and gift cards (or any category). Body: { companyIds?: uuid[]
+// | all: true, category, title, body, expiresAt?, cta?, code?, amountInr? }.
+router.post('/api/admin/owner-notify', async (req, res) => {
+  if (!secretOk(req, 'x-admin-secret', 'ADMIN_API_SECRET')) return res.status(401).json({ error: 'unauthorized' })
+  const b = req.body || {}
+  if (!CATEGORIES.includes(b.category)) return res.status(400).json({ error: `category must be one of ${CATEGORIES.join(', ')}` })
+  if (typeof b.title !== 'string' || !b.title.trim() || typeof b.body !== 'string' || !b.body.trim()) {
+    return res.status(400).json({ error: 'title and body are required' })
+  }
+  const db = serviceDb()
+  if (!db) return res.status(503).json({ error: 'no database' })
+  let companyIds = Array.isArray(b.companyIds) ? b.companyIds.filter((id) => typeof id === 'string') : []
+  if (b.all === true) {
+    const { data, error } = await db.from('b2b_owners').select('company_id').not('activated_at', 'is', null)
+    if (error) return res.status(500).json({ error: error.message })
+    companyIds = (data ?? []).map((o) => o.company_id)
+  }
+  if (!companyIds.length || companyIds.length > 2000) return res.status(400).json({ error: 'give companyIds (1–2000) or all: true' })
+  const kind = b.category === 'gift_cards' ? 'gift_card' : 'offer'
+  const data = {
+    expiresAt: typeof b.expiresAt === 'string' ? b.expiresAt : null,
+    cta: typeof b.cta === 'string' ? b.cta.slice(0, 40) : null,
+    code: typeof b.code === 'string' ? b.code.slice(0, 60) : null,
+    amountInr: Number.isFinite(Number(b.amountInr)) ? Number(b.amountInr) : null,
+  }
+  const results = []
+  for (const companyId of companyIds) {
+    const r = await notifyOwner({
+      companyId, category: b.category, title: b.title.trim(), body: b.body.trim(),
+      data, link: ['deals', 'gift_cards'].includes(b.category) ? { screen: kind } : null,
+    })
+    results.push({ companyId, ...r })
+  }
+  return res.json({ posted: results.filter((r) => r.posted).length, results })
 })

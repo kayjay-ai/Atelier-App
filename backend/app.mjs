@@ -9,6 +9,7 @@ import embedRoutes from './routes/embed.mjs'
 import b2bRoutes from './routes/b2b.mjs'
 import aiRoutes from './routes/ai.mjs'
 import adminRoutes from './routes/admin.mjs'
+import ownerRoutes from './routes/owner.mjs'
 
 // =============================================================================
 // The Express app: shared middleware, then one route module per area.
@@ -18,6 +19,7 @@ import adminRoutes from './routes/admin.mjs'
 //   routes/b2b.mjs       store app session, notices, Plan & Credits, iPad checkout pages
 //   routes/ai.mjs        style, colour, size, verdict, safety, garment-from-link, try-on
 //   routes/admin.mjs     daily job, admin notifications (shared-secret endpoints)
+//   routes/owner.mjs     owner portal (/api/owner/*) and the store manager's invite link
 // Who is calling is worked out once per request: lib/identity.mjs.
 // =============================================================================
 
@@ -113,7 +115,7 @@ export function createApp() {
       res.setHeader('Access-Control-Allow-Origin', origin)
       res.setHeader('Vary', 'Origin')
     }
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Atelier-Device')
     if (req.method === 'OPTIONS') return res.sendStatus(204)
     next()
@@ -155,6 +157,7 @@ export function createApp() {
   app.use(embedRoutes)
   app.use(b2bRoutes)
   app.use(adminRoutes)
+  app.use(ownerRoutes)
   app.use(aiRoutes)
 
   // Errors thrown synchronously or passed to next(err) (e.g. a malformed JSON

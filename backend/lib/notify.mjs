@@ -1,5 +1,6 @@
 import { getSettings } from './clients.mjs'
 import { serviceDb } from './db.mjs'
+import { sendEmail } from './email.mjs'
 
 // =============================================================================
 // Credit / plan notifications (Admin spec §5.9). One function sends a message to
@@ -53,32 +54,8 @@ const TEMPLATES = {
   },
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
-}
-
-async function sendEmail({ to, subject, body, linkUrl }) {
-  const key = process.env.RESEND_API_KEY
-  const from = process.env.NOTIFY_FROM_EMAIL
-  if (!key || !from) return { status: 'skipped', error: 'email not configured (RESEND_API_KEY / NOTIFY_FROM_EMAIL)' }
-  if (!to) return { status: 'skipped', error: 'recipient has no email address' }
-  const html = `<p>${escapeHtml(body)}</p>${linkUrl ? `<p><a href="${escapeHtml(linkUrl)}">Upgrade your plan</a></p>` : ''}`
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from, to: [to], subject, html,
-        text: linkUrl ? `${body}\n\n${linkUrl}` : body,
-        ...(process.env.NOTIFY_REPLY_TO ? { reply_to: process.env.NOTIFY_REPLY_TO } : {}),
-      }),
-    })
-    if (!res.ok) return { status: 'failed', error: `Resend ${res.status}: ${(await res.text()).slice(0, 300)}` }
-    return { status: 'sent', error: null }
-  } catch (err) {
-    return { status: 'failed', error: err?.message ?? String(err) }
-  }
-}
+const sendCreditEmail = ({ to, subject, body, linkUrl }) =>
+  sendEmail({ to, subject, body, link: linkUrl ? { url: linkUrl, label: 'Upgrade your plan' } : null })
 
 /** Recipient details: name, email and the numbers the templates use. */
 async function loadRecipient(db, recipientType, recipientId) {
@@ -164,7 +141,7 @@ export async function sendNotification({
     const outcome = channel === 'email'
       ? (r.emailOptOut && trigger === 'auto'
         ? { status: 'skipped', error: 'user turned off email notifications' }
-        : await sendEmail({ to: r.email, subject: finalSubject, body: finalBody, linkUrl }))
+        : await sendCreditEmail({ to: r.email, subject: finalSubject, body: finalBody, linkUrl }))
       : { status: 'sent', error: null } // tablet / in-app: the row itself is the message
     const { error } = await db.from('notifications').insert({
       recipient_type: recipientType, recipient_id: recipientId, channel, template, trigger,
