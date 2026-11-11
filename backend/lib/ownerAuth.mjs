@@ -49,6 +49,8 @@ const BAD_LOGIN = 'Email or password is incorrect.'
 const NOT_SET_UP = 'The owner portal isn’t set up yet — contact Atelier support.'
 const NOT_ACTIVE = 'Your account isn’t active yet.'
 const PAUSED = 'Your organization’s Atelier access is paused — contact Atelier support.'
+// b2b_owners.status is the admin panel's: 'blocked' stops activation, sign-in and every owner call.
+const BLOCKED = 'Your owner account is blocked — contact Atelier support.'
 
 function db() {
   const client = serviceDb()
@@ -168,6 +170,7 @@ export async function startVerification({ code, email, purpose, ip }) {
   if (!company) throw new OwnerError(400, 'mismatch', MISMATCH)
   if (company.status === 'inactive') throw new OwnerError(403, 'company_inactive', PAUSED)
   let owner = await ownerForCompany(company.company_id)
+  if (owner?.status === 'blocked') throw new OwnerError(403, 'owner_blocked', BLOCKED)
   if (purpose === 'activation' && owner?.activated_at) {
     throw new OwnerError(409, 'already_active', 'This account is already active. Log in instead.')
   }
@@ -364,7 +367,7 @@ export async function findOwnerSession(userId, sessionId) {
   }
   if (!row || row.user_id !== userId || row.revoked_at || Date.parse(row.expires_at) <= Date.now()) return null
   const owner = row.b2b_owners
-  if (!owner?.activated_at || owner.user_id !== userId || !owner.b2b_companies) return null
+  if (!owner?.activated_at || owner.user_id !== userId || !owner.b2b_companies || owner.status === 'blocked') return null
   if (Date.now() - Date.parse(row.last_seen_at) > 5 * MIN) {
     supabase.from('b2b_owner_sessions').update({ last_seen_at: new Date().toISOString() }).eq('session_id', sessionId)
       .then(({ error: e }) => { if (e) console.warn('[Atelier] owner session touch failed:', e.message) })
@@ -428,8 +431,8 @@ export async function setPassword({ token, password, userAgent, ip }) {
         userId = data.user.id
       }
       const { error: oErr } = await supabase.from('b2b_owners').update({
-        user_id: userId, email: row.email, activated_at: new Date().toISOString(),
-        failed_login_count: 0, failed_login_since: null, locked_until: null, updated_at: new Date().toISOString(),
+        user_id: userId, email: row.email, activated_at: new Date().toISOString(), email_verified_at: new Date().toISOString(),
+        failed_logins: 0, failed_login_since: null, locked_until: null, updated_at: new Date().toISOString(),
       }).eq('owner_id', owner.owner_id)
       if (oErr?.code === '23505') throw new OwnerError(409, 'email_in_use', 'This email already owns another organization on Atelier — contact Atelier support.')
       check(oErr)
@@ -461,7 +464,7 @@ export async function setPassword({ token, password, userAgent, ip }) {
     await supabase.from('b2b_owner_sessions').update({ revoked_at: new Date().toISOString() })
       .eq('owner_id', owner.owner_id).is('revoked_at', null)
     await supabase.from('b2b_owners').update({
-      failed_login_count: 0, failed_login_since: null, locked_until: null, updated_at: new Date().toISOString(),
+      failed_logins: 0, failed_login_since: null, locked_until: null, updated_at: new Date().toISOString(),
     }).eq('owner_id', owner.owner_id)
     await audit({ ownerId: owner.owner_id, companyId: owner.company_id }, 'password_reset')
     notifyOwner({
@@ -489,6 +492,7 @@ export async function login({ email, password, remember, userAgent, ip }) {
   const owner = await ownerForCompany(company.company_id)
   if (!owner?.activated_at || !owner.user_id) throw new OwnerError(403, 'not_activated', NOT_ACTIVE)
   if (company.status === 'inactive') throw new OwnerError(403, 'company_inactive', PAUSED)
+  if (owner.status === 'blocked') throw new OwnerError(403, 'owner_blocked', BLOCKED)
   if (owner.locked_until && Date.parse(owner.locked_until) > Date.now()) {
     throw new OwnerError(429, 'locked', TOO_MANY, { retryInSec: Math.ceil((Date.parse(owner.locked_until) - Date.now()) / 1000) })
   }
@@ -498,11 +502,11 @@ export async function login({ email, password, remember, userAgent, ip }) {
   if (!session || session.user?.id !== owner.user_id) {
     if (session) await endAuthSession(session.user?.id, claimsOf(session.access_token).session_id)
     const inWindow = owner.failed_login_since && Date.now() - Date.parse(owner.failed_login_since) < WINDOW_MS
-    const count = (inWindow ? owner.failed_login_count : 0) + 1
+    const count = (inWindow ? owner.failed_logins : 0) + 1
     const locks = count >= LOGIN_MAX_FAILS
     await supabase.from('b2b_owners').update(locks
-      ? { failed_login_count: 0, failed_login_since: null, locked_until: new Date(Date.now() + LOCK_MS).toISOString() }
-      : { failed_login_count: count, failed_login_since: inWindow ? owner.failed_login_since : new Date().toISOString() },
+      ? { failed_logins: 0, failed_login_since: null, locked_until: new Date(Date.now() + LOCK_MS).toISOString() }
+      : { failed_logins: count, failed_login_since: inWindow ? owner.failed_login_since : new Date().toISOString() },
     ).eq('owner_id', owner.owner_id)
     if (locks) {
       notifyOwner({
@@ -515,9 +519,9 @@ export async function login({ email, password, remember, userAgent, ip }) {
     }
     throw new OwnerError(401, 'bad_credentials', BAD_LOGIN)
   }
-  if (owner.failed_login_count || owner.locked_until) {
-    await supabase.from('b2b_owners').update({ failed_login_count: 0, failed_login_since: null, locked_until: null }).eq('owner_id', owner.owner_id)
-  }
+  await supabase.from('b2b_owners').update({
+    failed_logins: 0, failed_login_since: null, locked_until: null, last_login_at: new Date().toISOString(),
+  }).eq('owner_id', owner.owner_id)
   return { session: await startOwnerSession(owner, session, { remember, userAgent, ip, alertNewDevice: true }) }
 }
 

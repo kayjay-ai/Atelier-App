@@ -34,21 +34,30 @@ alter table public.b2b_payments add column if not exists payment_method text;
 alter table public.b2b_payments add column if not exists method_last4 text;
 
 -- ── 1. Owners ────────────────────────────────────────────────────────────────
+-- The live database already had b2b_owners from the admin panel (owner_id,
+-- company_id, name, email, password_hash, email_verified_at, status
+-- 'active'|'blocked', failed_logins, locked_until, last_login_at). The portal
+-- reuses those columns (password_hash stays unused: Supabase Auth holds the
+-- password) and adds the rest below, so this works on either starting point.
 create table if not exists public.b2b_owners (
   owner_id           uuid primary key default gen_random_uuid(),
   company_id         uuid not null unique references public.b2b_companies (company_id) on delete cascade,
-  user_id            uuid unique references auth.users (id) on delete set null,
-  email              text not null,
   name               text,
-  phone              text,
-  activated_at       timestamptz,
-  failed_login_count integer not null default 0,
-  failed_login_since timestamptz,
+  email              text not null,
+  password_hash      text,
+  email_verified_at  timestamptz,
+  status             text not null default 'active' check (status in ('active', 'blocked')),
+  failed_logins      integer not null default 0,
   locked_until       timestamptz,
-  notify_prefs       jsonb not null default '{}'::jsonb,
+  last_login_at      timestamptz,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()
 );
+alter table public.b2b_owners add column if not exists user_id uuid unique references auth.users (id) on delete set null;
+alter table public.b2b_owners add column if not exists phone text;
+alter table public.b2b_owners add column if not exists activated_at timestamptz;
+alter table public.b2b_owners add column if not exists failed_login_since timestamptz;
+alter table public.b2b_owners add column if not exists notify_prefs jsonb not null default '{}'::jsonb;
 create index if not exists b2b_owners_email_lower_idx on public.b2b_owners (lower(email));
 
 -- ── 2. One-time codes (activation / password reset) ──────────────────────────
