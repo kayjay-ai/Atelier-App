@@ -59,7 +59,11 @@ function db() {
 /** Throw a database error, as "not set up" when the migration isn't applied. */
 function check(error) {
   if (!error) return
-  if (isMissingSchema(error)) throw new OwnerError(503, 'not_set_up', NOT_SET_UP)
+  if (isMissingSchema(error)) {
+    // Say exactly what is missing, so a half-applied owner-portal.sql is easy to spot.
+    console.error(`[Atelier] owner portal: database not set up (${error.code ?? "?"}): ${error.message}`)
+    throw new OwnerError(503, 'not_set_up', NOT_SET_UP)
+  }
   throw error
 }
 
