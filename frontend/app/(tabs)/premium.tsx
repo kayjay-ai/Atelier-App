@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native'
+import { View, Text, StyleSheet } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { supabase } from '../../lib/supabaseClient'
 import { useMembershipStore, isPremium, creditsLeft } from '../../lib/store'
 import { PurchaseOptions, usePricingOptions } from '../../lib/purchaseOptions'
 import { FREE_CREDITS, inr } from '../../lib/pricing'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon, PillButton } from '../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
+import { Card, EmptyState, Page, PageHeader, SectionHeader } from '../../lib/ui'
 
 // Premium tab (spec §3.5): credits left (free starter credits shown as such),
 // the 3 plans side by side, current plan, and purchase history. Plans are
@@ -46,14 +46,10 @@ export default function PremiumScreen() {
 
   if (checked && !userId) {
     return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.centered}>
-          <Icon name="premium" size={44} color={Colors.primary} />
-          <Text style={s.title}>Atelier Premium</Text>
-          <Text style={s.subtle}>Sign in to get your {FREE_CREDITS} free try-ons and buy more.</Text>
-          <PillButton label="Sign in" onPress={() => router.push('/auth')} style={{ alignSelf: 'stretch', marginTop: Space.md }} />
-        </View>
-      </SafeAreaView>
+      <Page width="reading">
+        <EmptyState icon="premium" title="Atelier Premium" body={`Sign in to get your ${FREE_CREDITS} free try-ons and buy more.`}
+          action={{ label: 'Sign in', onPress: () => router.push('/auth') }} />
+      </Page>
     )
   }
 
@@ -63,86 +59,83 @@ export default function PremiumScreen() {
   const last = purchases[0]
 
   return (
-    <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.scroll}>
-        <View style={s.column}>
-          <View style={s.balanceCard}>
-            <Text style={s.label}>CREDITS LEFT</Text>
-            <Text style={s.balanceBig}>{premium ? '∞' : balance}</Text>
-            <Text style={s.subtle}>
-              {premium
-                ? 'Premium — unlimited try-ons.'
-                : onFreeCredits
-                  ? `Free starter credits · ${balance} of ${FREE_CREDITS} left`
-                  : `${balance} credit${balance === 1 ? '' : 's'} · 1 credit = 1 try-on`}
-            </Text>
-            {onFreeCredits && <Text style={s.hint}>Every new account starts with {FREE_CREDITS} free try-ons. Size advice and style tips are free.</Text>}
-          </View>
+    <Page width="app">
+      <PageHeader title="Premium" subtitle="Credits for try-ons. Plans are one-time packs: nothing renews, so there’s nothing to cancel." />
 
-          {!premium && (
-            <>
-              <Text style={s.sectionHeading}>CHOOSE A PLAN</Text>
-              <PurchaseOptions onPurchased={() => load()} />
-            </>
-          )}
-
-          <Text style={s.sectionHeading}>YOUR PLAN</Text>
-          <View style={s.card}>
-            {premium ? (
-              <Text style={s.body}>Atelier Premium — unlimited try-ons and clean downloads.</Text>
-            ) : last ? (
-              <>
-                <Text style={s.body}>{planName(last.type)} · {last.credits_granted} credits</Text>
-                <Text style={s.subtle}>Bought {fmtDate(last.paid_at ?? last.created_at)}. Plans are one-time packs — nothing renews and nothing to cancel; buy again whenever you need more.</Text>
-              </>
-            ) : (
-              <Text style={s.subtle}>You're on free starter credits. Pick a plan above when you need more.</Text>
-            )}
-          </View>
-
-          {purchases.length > 0 && (
-            <>
-              <Text style={s.sectionHeading}>PURCHASE HISTORY</Text>
-              <View style={s.card}>
-                {purchases.map((p, i) => (
-                  <View key={p.id} style={[s.historyRow, i > 0 && s.historyBorder]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.body}>{planName(p.type)}</Text>
-                      <Text style={s.subtle}>{fmtDate(p.paid_at ?? p.created_at)} · +{p.credits_granted} credits</Text>
-                    </View>
-                    <Text style={s.amount}>{inr(Number(p.amount_inr))}</Text>
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
+      <View style={s.balance}>
+        <View style={{ flex: 1, minWidth: 200, gap: Space.xs }}>
+          <Text style={s.balanceLabel}>CREDITS LEFT</Text>
+          <Text style={s.balanceBig}>{premium ? '∞' : balance}</Text>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+        <View style={{ flex: 1, minWidth: 220, gap: Space.xs }}>
+          <Text style={s.balanceLine}>
+            {premium
+              ? 'Premium: unlimited try-ons and clean downloads.'
+              : onFreeCredits
+                ? `Free starter credits — ${balance} of ${FREE_CREDITS} left.`
+                : 'Each try-on uses one credit. Credits never expire.'}
+          </Text>
+          {onFreeCredits && <Text style={s.balanceHint}>Every new account starts with {FREE_CREDITS} free try-ons. Size advice and style tips are always free.</Text>}
+        </View>
+      </View>
+
+      {!premium && (
+        <View style={{ gap: Space.base }}>
+          <SectionHeader title="Choose a plan" />
+          <PurchaseOptions onPurchased={() => load()} />
+        </View>
+      )}
+
+      <View style={{ gap: Space.base }}>
+        <SectionHeader title="Your plan" />
+        <Card>
+          {premium ? (
+            <Text style={s.body}>Atelier Premium — unlimited try-ons and clean downloads.</Text>
+          ) : last ? (
+            <View style={{ gap: Space.xs }}>
+              <Text style={s.bodyStrong}>{planName(last.type)} · {last.credits_granted} credits</Text>
+              <Text style={s.subtle}>Bought {fmtDate(last.paid_at ?? last.created_at)}. Buy again whenever you need more.</Text>
+            </View>
+          ) : (
+            <Text style={s.subtle}>You’re on free starter credits. Choose a plan above when you need more.</Text>
+          )}
+        </Card>
+      </View>
+
+      {purchases.length > 0 && (
+        <View style={{ gap: Space.base }}>
+          <SectionHeader title="Purchase history" />
+          <Card padded={false}>
+            {purchases.map((p, i) => (
+              <View key={p.id} style={[s.historyRow, i > 0 && s.historyBorder]}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={s.bodyStrong}>{planName(p.type)}</Text>
+                  <Text style={s.subtle}>{fmtDate(p.paid_at ?? p.created_at)} · +{p.credits_granted} credits</Text>
+                </View>
+                <Text style={s.amount}>{inr(Number(p.amount_inr))}</Text>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
+    </Page>
   )
 }
 
 const s = StyleSheet.create({
-  safe:     { flex: 1, backgroundColor: Colors.bg },
-  scroll:   { padding: Space.base, paddingBottom: Space.xxl },
-  column:   { width: '100%', maxWidth: 820, alignSelf: 'center', gap: Space.md },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Space.lg, gap: Space.sm, maxWidth: 420, alignSelf: 'center', width: '100%' },
-
-  title:  { ...Typography.h1, textAlign: 'center' },
-  subtle: { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 20 },
-  hint:   { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
-  label:  { ...Typography.label, color: Colors.textFaint },
-  body:   { ...Typography.body, color: Colors.text },
-  amount: { ...Typography.body, fontWeight: '600', color: Colors.text },
-
-  balanceCard: {
-    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border,
-    padding: Space.lg, alignItems: 'center', gap: Space.xs,
+  balance: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: Space.lg,
+    backgroundColor: Colors.bgDark, borderRadius: Radius.xl, padding: Space.xl,
   },
-  balanceBig: { ...Typography.display, fontSize: 44, lineHeight: 52, color: Colors.secondary },
+  balanceLabel: { ...Typography.label, color: Colors.primaryLight },
+  balanceBig:   { ...Typography.numeral, fontSize: 72, lineHeight: 76, color: Colors.textOnDark },
+  balanceLine:  { ...Typography.body, fontSize: 16, color: Colors.textOnDark },
+  balanceHint:  { ...Typography.bodySmall, color: Colors.textOnDarkMuted },
 
-  sectionHeading: { ...Typography.label, color: Colors.textMuted, marginTop: Space.sm },
-  card: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: Space.base, gap: Space.xs },
-  historyRow:    { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.sm },
+  subtle:     { ...Typography.bodySmall, color: Colors.textMuted },
+  body:       { ...Typography.body },
+  bodyStrong: { ...Typography.body, ...Weight.semibold },
+  amount:     { ...Typography.body, ...Weight.semibold },
+  historyRow:    { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.base, paddingHorizontal: Space.lg },
   historyBorder: { borderTopWidth: 1, borderTopColor: Colors.borderSubtle },
 })

@@ -1,8 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import {
-  View, Text, TouchableOpacity, ScrollView, SafeAreaView,
-  ActivityIndicator, StyleSheet, Animated, Easing,
-} from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useProfileStore } from '../../lib/store'
 import { fetchColorAnalysis, fetchStyleAnalysis } from '../../lib/api'
@@ -10,54 +7,44 @@ import { supabase } from '../../lib/supabaseClient'
 import { upsertProfile } from '../../lib/supabaseStorage'
 import { imageToDataUri } from '../../lib/dataUri'
 import { isFallback, isRetryable } from '../../lib/aiOutcome'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon, IconName } from '../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight, FONT_DISPLAY, Shadow } from '../../lib/theme'
+import { EmptyState, Icon, Notice, Page, PillButton, Title, displayProps, useReducedMotion } from '../../lib/ui'
 import type { ColorSwatch, StyleReport } from '../../lib/types'
 
-// Style tab (spec §3.4): one "Style me" button → a saved report read from the
-// profile photo: colours that suit / to avoid (with why), fits and silhouettes
-// to wear / avoid, necklines, lengths and patterns, archetype + 3 outfit ideas.
-// "Refresh analysis" reruns it (e.g. after a new photo).
+// Style tab (spec §3.4, docs/design/4.svg + 5.svg): one "Reveal My Style"
+// button on the charcoal stage → a saved report read from the profile photo,
+// in white cards: colours that suit / to avoid (with why), fits and
+// silhouettes to wear / avoid, necklines, lengths and patterns, archetype +
+// 3 outfit ideas. "Refresh My Style" reruns it (e.g. after a new photo).
 
-const SERIF = '"Alta", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif'
-const ON_DARK        = Colors.textOnDark
-const ON_DARK_MUTED  = 'rgba(250,248,245,0.62)'
-const ON_DARK_FAINT  = 'rgba(250,248,245,0.42)'
-const ON_DARK_BODY   = 'rgba(250,248,245,0.80)'
-
+// The rings behind the button breathe slowly — the one ambient motion in the
+// app, and still for anyone who asked their device for less motion.
 function useBreathingShimmer() {
-  const anim = useRef(new Animated.Value(0)).current
+  const reduced = useReducedMotion()
+  const anim = useRef(new Animated.Value(0.5)).current
   useEffect(() => {
-    Animated.loop(
+    if (reduced) return
+    const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration: 3800, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
-        Animated.timing(anim, { toValue: 0, duration: 3800, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
+        Animated.timing(anim, { toValue: 1, duration: 3800, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(anim, { toValue: 0, duration: 3800, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
       ]),
-    ).start()
-  }, [anim])
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [anim, reduced])
   return anim
 }
 
-function GoldButton({ label, icon, loading, onPress }: { label: string; icon: IconName; loading: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={[s.goldBtn, loading && s.goldBtnDisabled]} onPress={onPress} disabled={loading} activeOpacity={0.85}>
-      {loading
-        ? <ActivityIndicator color={Colors.secondary} />
-        : <View style={s.goldRow}><Icon name={icon} size={20} color={Colors.secondary} /><Text style={s.goldText}>{label}</Text></View>}
-    </TouchableOpacity>
-  )
-}
-
+/** Colour circles with their names underneath (docs/design/5.svg). */
 function SwatchList({ colors, faded }: { colors: ColorSwatch[]; faded?: boolean }) {
   return (
     <View style={s.swatchGrid}>
       {colors.map((c) => (
-        <View key={c.name} style={s.swatchItem}>
-          <View style={[s.swatchDot, faded && s.swatchDotAvoid, { backgroundColor: c.hex }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.swatchName}>{c.name}</Text>
-            {!!c.why && <Text style={s.swatchWhy}>{c.why}</Text>}
-          </View>
+        <View key={c.name} style={s.swatchItem} accessible accessibilityLabel={`${c.name}${c.why ? `. ${c.why}` : ''}`}>
+          <View style={[s.swatchDot, { backgroundColor: c.hex }, faded && s.swatchDotAvoid]} />
+          <Text style={s.swatchName}>{c.name}</Text>
+          {!!c.why && <Text style={s.swatchWhy}>{c.why}</Text>}
         </View>
       ))}
     </View>
@@ -71,9 +58,22 @@ function Bullets({ items }: { items?: string[] }) {
       {items.map((it, i) => (
         <View key={i} style={s.bulletRow}>
           <View style={s.bulletDot} />
-          <Text style={s.bulletText}>{it}</Text>
+          <Text style={s.body}>{it}</Text>
         </View>
       ))}
+    </View>
+  )
+}
+
+/** One white report card: a small label, then an optional display heading. */
+function ReportCard({ label, heading, children }: { label: string; heading?: string; children: React.ReactNode }) {
+  return (
+    <View style={s.card}>
+      <View style={{ gap: Space.xs }}>
+        <Text style={s.cardLabel}>{label}</Text>
+        {!!heading && <Text {...displayProps(30)} style={s.heading} accessibilityRole="header">{heading.toUpperCase()}</Text>}
+      </View>
+      {children}
     </View>
   )
 }
@@ -137,209 +137,168 @@ export default function StyleScreen() {
   const style = report?.style
   const color = report?.color
   const narrativeLines = style?.narrative?.split('\n').filter(Boolean) ?? []
+  const hasDetails = !!(style && (style.necklines?.length || style.lengths?.length || style.patterns?.length))
 
   return (
-    <View style={s.page}>
-      <SafeAreaView style={s.safe}>
-        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-          <View style={s.column}>
-            <Text style={s.pageHeading}>Your Style Report</Text>
-            <Text style={s.pageSub}>Colours, cuts and looks that suit you — read from your photo.</Text>
+    <Page tone="dark" width="reading" gap={Space.lg}>
+      <View style={{ gap: Space.md }}>
+        <Title tone="light" size="display">Reveal Your Style</Title>
+        <Text style={s.pageSub}>Colours, cuts and looks that suit you — read from your photo.</Text>
+      </View>
 
-            {!hasPhoto ? (
-              <View style={s.emptyState}>
-                <Icon name="profile" size={44} color={ON_DARK_FAINT} />
-                <Text style={s.emptyTitle}>Add your photo first</Text>
-                <Text style={s.emptySub}>Style me reads your colouring and proportions from a full-body photo.</Text>
-                <TouchableOpacity style={s.outlineBtn} onPress={() => router.navigate('/(tabs)/profile')}>
-                  <Text style={s.outlineBtnText}>Add your photo</Text>
-                </TouchableOpacity>
-              </View>
-            ) : !report ? (
-              <View style={s.hero}>
-                <Animated.View style={[s.rings, { transform: [{ scale: ringScale }] }]} pointerEvents="none">
-                  <Animated.View style={[s.ring, s.ring1, { opacity: ringOpacity }]} />
-                  <Animated.View style={[s.ring, s.ring2, { opacity: ringOpacity }]} />
-                  <Animated.View style={[s.ring, s.ring3, { opacity: ringOpacity }]} />
-                </Animated.View>
-                <View style={s.btnBlock}>
-                  <Icon name="star" size={22} color={ON_DARK} style={s.sparkTR} />
-                  <Icon name="star" size={16} color={ON_DARK} style={s.sparkBL} />
-                  <GoldButton label="Style me" icon="reveal" loading={loading} onPress={styleMe} />
-                </View>
-                {loading && <Text style={s.loadingNote}>{LOADING_LINES[line]}</Text>}
-                {error && <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View>}
-              </View>
-            ) : (
-              <View style={s.refreshRow}>
-                <Text style={s.reportDate}>
-                  Report from {new Date(report.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </Text>
-                <GoldButton label="Refresh analysis" icon="refresh" loading={loading} onPress={styleMe} />
-                {loading && <Text style={s.loadingNote}>{LOADING_LINES[line]}</Text>}
-                {error && <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View>}
-              </View>
-            )}
+      {!hasPhoto ? (
+        <EmptyState
+          tone="dark" icon="profile" title="Add your photo first"
+          body="Your Style report reads your colouring and proportions from a full-length photo."
+          action={{ label: 'Add your photo', icon: 'takePhoto', onPress: () => router.navigate('/(tabs)/profile') }}
+          style={{ minHeight: 380, justifyContent: 'center' }}
+        />
+      ) : !report ? (
+        <View style={s.hero}>
+          <Animated.View style={[s.rings, { transform: [{ scale: ringScale }], pointerEvents: 'none' }]}>
+            <Animated.View style={[s.ring, s.ring1, { opacity: ringOpacity }]} />
+            <Animated.View style={[s.ring, s.ring2, { opacity: ringOpacity }]} />
+            <Animated.View style={[s.ring, s.ring3, { opacity: ringOpacity }]} />
+            <Animated.View style={[s.ring, s.ring4, { opacity: ringOpacity }]} />
+          </Animated.View>
+          <View style={s.btnBlock}>
+            <Icon name="star" size={24} color={Colors.textOnDark} style={s.sparkTR} />
+            <Icon name="star" size={18} color={Colors.textOnDark} style={s.sparkBL} />
+            <PillButton label="Reveal My Style" icon="style" variant="gold" size="lg" loading={loading} onPress={styleMe} style={s.revealBtn} />
+          </View>
+          {loading && <Text style={s.loadingNote} accessibilityLiveRegion="polite">{LOADING_LINES[line]}</Text>}
+          {error && <Notice tone="error" text={error} style={s.notice} />}
+        </View>
+      ) : (
+        <View style={s.refreshRow}>
+          <PillButton label="Refresh My Style" icon="style" variant="gold" size="md" loading={loading} onPress={styleMe} />
+          <Text style={s.reportDate}>
+            From {new Date(report.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </Text>
+          {loading && <Text style={s.loadingNote} accessibilityLiveRegion="polite">{LOADING_LINES[line]}</Text>}
+          {error && <Notice tone="error" text={error} style={s.notice} />}
+        </View>
+      )}
 
-            {style && (
-              <View style={s.card}>
-                <Text style={s.cardEyebrow}>YOUR STYLE ARCHETYPE</Text>
-                <Text style={s.heading}>{style.archetype}</Text>
-                {narrativeLines.map((l, i) => {
-                  const dash = l.indexOf(' — ')
-                  return (
-                    <View key={i} style={s.narrativeLine}>
-                      {dash > -1 && <Text style={s.narrativeLabel}>{l.slice(0, dash)}</Text>}
-                      <Text style={s.body}>{dash > -1 ? l.slice(dash + 3) : l}</Text>
-                    </View>
-                  )
-                })}
-              </View>
-            )}
+      {color && (
+        <ReportCard label="COLOUR ANALYSIS" heading={color.season}>
+          <Text style={s.subhead}>{color.undertone} undertone</Text>
+          <Text style={s.body}>{color.narrative}</Text>
+          <Text style={s.sectionLabel}>YOUR PALETTE</Text>
+          <SwatchList colors={color.flatteringColors} />
+          {color.avoid?.length > 0 && (
+            <>
+              <Text style={s.sectionLabel}>AVOID</Text>
+              <SwatchList colors={color.avoid} faded />
+            </>
+          )}
+          {!!style?.palettes?.length && style.palettes.map((p) => (
+            <View key={p.name} style={{ gap: Space.sm }}>
+              <Text style={s.sectionLabel}>{p.name.toUpperCase()}</Text>
+              <SwatchList colors={p.colors} />
+            </View>
+          ))}
+        </ReportCard>
+      )}
 
-            {color && (
-              <View style={s.card}>
-                <Text style={s.cardEyebrow}>COLOURS THAT SUIT YOU</Text>
-                <Text style={s.heading}>{color.season}</Text>
-                <Text style={s.subhead}>{color.undertone} undertone</Text>
-                <Text style={s.body}>{color.narrative}</Text>
-                <SwatchList colors={color.flatteringColors} />
-                {color.avoid?.length > 0 && (
-                  <>
-                    <Text style={[s.sectionLabel, { marginTop: Space.md }]}>COLOURS TO AVOID</Text>
-                    <SwatchList colors={color.avoid} faded />
-                  </>
-                )}
+      {style && (
+        <ReportCard label="STYLE GUIDE" heading={style.archetype}>
+          {narrativeLines.map((l, i) => {
+            const dash = l.indexOf(' — ')
+            return (
+              <View key={i} style={{ gap: 2 }}>
+                {dash > -1 && <Text style={s.narrativeLabel}>{l.slice(0, dash)}</Text>}
+                <Text style={s.body}>{dash > -1 ? l.slice(dash + 3) : l}</Text>
               </View>
-            )}
-
-            {style && (
-              <View style={s.card}>
-                <Text style={s.cardEyebrow}>FITS & SILHOUETTES</Text>
-                <Text style={s.sectionLabel}>FLATTER YOU</Text>
-                <Bullets items={style.silhouettes} />
-                {!!style.silhouettesToAvoid?.length && (
-                  <>
-                    <Text style={[s.sectionLabel, { marginTop: Space.sm }]}>BEST AVOIDED</Text>
-                    <Bullets items={style.silhouettesToAvoid} />
-                  </>
-                )}
-              </View>
-            )}
-
-            {style && (style.necklines?.length || style.lengths?.length || style.patterns?.length) ? (
-              <View style={s.card}>
-                <Text style={s.cardEyebrow}>DETAILS FOR YOUR PROPORTIONS</Text>
-                <View style={s.detailGrid}>
-                  {!!style.necklines?.length && <View style={s.detailCol}><Text style={s.sectionLabel}>NECKLINES</Text><Bullets items={style.necklines} /></View>}
-                  {!!style.lengths?.length && <View style={s.detailCol}><Text style={s.sectionLabel}>LENGTHS</Text><Bullets items={style.lengths} /></View>}
-                  {!!style.patterns?.length && <View style={s.detailCol}><Text style={s.sectionLabel}>PATTERNS</Text><Bullets items={style.patterns} /></View>}
-                </View>
-              </View>
-            ) : null}
-
-            {!!style?.outfits?.length && (
-              <View style={s.card}>
-                <Text style={s.cardEyebrow}>3 OUTFIT IDEAS</Text>
-                <View style={s.outfitGrid}>
-                  {style.outfits.slice(0, 3).map((o, i) => (
-                    <View key={i} style={s.outfit}>
-                      <Text style={s.outfitNum}>{i + 1}</Text>
-                      <Text style={s.outfitName}>{o.name}</Text>
-                      <Text style={s.body}>{o.pieces}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {style && !!style.palettes?.length && (
-              <View style={s.card}>
-                <Text style={s.cardEyebrow}>YOUR PALETTE</Text>
-                {style.palettes.map((p) => (
-                  <View key={p.name} style={{ gap: Space.xs }}>
-                    <Text style={s.paletteName}>{p.name}</Text>
-                    <SwatchList colors={p.colors} />
-                  </View>
-                ))}
+            )
+          })}
+          <View style={s.divider} />
+          <View style={s.twoCol}>
+            <View style={s.col}>
+              <Text style={s.sectionLabel}>WEAR</Text>
+              <Bullets items={style.silhouettes} />
+            </View>
+            {!!style.silhouettesToAvoid?.length && (
+              <View style={s.col}>
+                <Text style={s.sectionLabel}>BEST AVOIDED</Text>
+                <Bullets items={style.silhouettesToAvoid} />
               </View>
             )}
           </View>
-        </ScrollView>
-      </SafeAreaView>
-    </View>
+          {hasDetails && (
+            <>
+              <View style={s.divider} />
+              <View style={s.twoCol}>
+                {!!style.necklines?.length && <View style={s.col}><Text style={s.sectionLabel}>NECKLINES</Text><Bullets items={style.necklines} /></View>}
+                {!!style.lengths?.length && <View style={s.col}><Text style={s.sectionLabel}>LENGTHS</Text><Bullets items={style.lengths} /></View>}
+                {!!style.patterns?.length && <View style={s.col}><Text style={s.sectionLabel}>PATTERNS</Text><Bullets items={style.patterns} /></View>}
+              </View>
+            </>
+          )}
+        </ReportCard>
+      )}
+
+      {!!style?.outfits?.length && (
+        <ReportCard label="THREE LOOKS FOR YOU">
+          <View style={s.outfitGrid}>
+            {style.outfits.slice(0, 3).map((o, i) => (
+              <View key={i} style={s.outfit}>
+                <Text {...displayProps(20)} style={s.outfitName}>{o.name}</Text>
+                <Text style={s.bodySmall}>{o.pieces}</Text>
+              </View>
+            ))}
+          </View>
+        </ReportCard>
+      )}
+    </Page>
   )
 }
 
 const s = StyleSheet.create({
-  page:   { flex: 1, backgroundColor: Colors.secondary },
-  safe:   { flex: 1 },
-  scroll: { padding: Space.base, paddingBottom: Space.xxl },
-  column: { width: '100%', maxWidth: 760, alignSelf: 'center', gap: Space.md },
+  pageSub: { ...Typography.body, fontSize: 16, lineHeight: 25, color: Colors.textOnDarkMuted },
 
-  pageHeading: { fontFamily: SERIF, fontSize: 30, fontWeight: '400', letterSpacing: 1, lineHeight: 40, color: ON_DARK, fontVariant: ['small-caps'] },
-  pageSub:     { fontFamily: SERIF, fontSize: 14, lineHeight: 22, color: ON_DARK_MUTED },
-
-  hero:  { minHeight: 400, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  hero:  { minHeight: 440, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   rings: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
-  ring:  { position: 'absolute', borderWidth: 1, borderColor: Colors.primary, borderRadius: 9999 },
-  ring1: { width: 190, height: 190 },
-  ring2: { width: 290, height: 290 },
-  ring3: { width: 390, height: 390 },
-  btnBlock: { position: 'relative', alignItems: 'center' },
-  sparkTR:  { position: 'absolute', top: -22, right: -18 },
-  sparkBL:  { position: 'absolute', bottom: -18, left: -14 },
+  ring:  { position: 'absolute', borderWidth: 1.5, borderColor: Colors.primary, borderRadius: 9999 },
+  ring1: { width: 200, height: 200 },
+  ring2: { width: 290, height: 290, opacity: 0.8 },
+  ring3: { width: 380, height: 380, opacity: 0.6 },
+  ring4: { width: 470, height: 470, opacity: 0.4 },
+  btnBlock:  { position: 'relative', alignItems: 'center' },
+  revealBtn: { minWidth: 260, ...Shadow.pop },
+  sparkTR:   { position: 'absolute', top: -26, right: -20 },
+  sparkBL:   { position: 'absolute', bottom: -22, left: -18 },
+  loadingNote: { ...Typography.bodySmall, textAlign: 'center', color: Colors.textOnDarkMuted, marginTop: Space.xl },
+  notice:      { marginTop: Space.lg, alignSelf: 'stretch' },
 
-  goldBtn: {
-    backgroundColor: Colors.primary, borderRadius: Radius.full, minHeight: 52,
-    paddingVertical: 15, paddingHorizontal: Space.xl, alignItems: 'center', justifyContent: 'center', minWidth: 220,
-    shadowColor: Colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 18, elevation: 6,
-  },
-  goldBtnDisabled: { opacity: 0.7 },
-  goldRow:  { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
-  goldText: { fontFamily: SERIF, fontSize: 16, fontWeight: '600', letterSpacing: 0.3, color: Colors.secondary },
+  refreshRow: { alignItems: 'flex-start', gap: Space.sm },
+  reportDate: { ...Typography.caption, color: Colors.textOnDarkMuted },
 
-  refreshRow:  { alignItems: 'center', gap: Space.sm, paddingVertical: Space.md },
-  reportDate:  { ...Typography.caption, color: ON_DARK_FAINT },
-  loadingNote: { ...Typography.caption, textAlign: 'center', color: ON_DARK_MUTED, marginTop: Space.md },
-  errorBox:    { backgroundColor: 'rgba(185,60,42,0.15)', borderRadius: Radius.sm, padding: Space.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', marginTop: Space.md, alignSelf: 'stretch' },
-  errorText:   { ...Typography.caption, color: '#F3C9C2', lineHeight: 19 },
+  card:      { backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Space.lg, gap: Space.base },
+  cardLabel: { ...Typography.label, color: Colors.text },
+  heading:   { fontFamily: FONT_DISPLAY, fontSize: 34, lineHeight: 40, letterSpacing: 1, color: Colors.text },
+  subhead:   { ...Typography.bodySmall, ...Weight.medium, color: Colors.accentInk, textTransform: 'capitalize', marginTop: -Space.sm },
+  body:      { ...Typography.body, flex: 1 },
+  bodySmall: { ...Typography.bodySmall, color: Colors.textMuted },
+  sectionLabel:   { ...Typography.label, color: Colors.text, marginTop: Space.sm },
+  narrativeLabel: { ...Typography.label, color: Colors.accentInk },
+  divider:   { height: 1.5, backgroundColor: Colors.primary, opacity: 0.6, marginVertical: Space.xs },
 
-  emptyState: { alignItems: 'center', paddingVertical: Space.xxl, gap: Space.md, minHeight: 360, justifyContent: 'center' },
-  emptyTitle: { ...Typography.h3, color: ON_DARK },
-  emptySub:   { ...Typography.bodySmall, color: ON_DARK_MUTED, lineHeight: 22, textAlign: 'center', maxWidth: 300 },
-  outlineBtn: { borderWidth: 1.5, borderColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: Space.lg, paddingVertical: 12, marginTop: Space.sm },
-  outlineBtnText: { ...Typography.body, color: Colors.primary, fontWeight: '600' },
-
-  card: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: Radius.lg, borderWidth: 1, borderColor: 'rgba(250,248,245,0.10)', padding: Space.base, gap: Space.sm },
-  cardEyebrow: { ...Typography.label, color: Colors.primary, letterSpacing: 2 },
-  heading:     { fontFamily: SERIF, fontSize: 24, lineHeight: 30, color: ON_DARK },
-  subhead:     { ...Typography.bodySmall, color: ON_DARK_MUTED, marginTop: -Space.xs, textTransform: 'capitalize' },
-  body:        { fontFamily: SERIF, fontSize: 15, lineHeight: 22, color: ON_DARK_BODY },
-  sectionLabel: { ...Typography.label, letterSpacing: 1.5, color: ON_DARK_FAINT },
-
-  narrativeLine:  { gap: 2 },
-  narrativeLabel: { ...Typography.label, color: Colors.primary, letterSpacing: 1 },
-
-  swatchGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md, marginTop: Space.xs },
-  swatchItem: { flexDirection: 'row', alignItems: 'center', gap: Space.md, flexBasis: 220, flexGrow: 1 },
-  swatchDot:  { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(250,248,245,0.18)' },
-  swatchDotAvoid: { opacity: 0.55 },
-  swatchName: { ...Typography.bodySmall, color: ON_DARK, fontWeight: '600' },
-  swatchWhy:  { ...Typography.caption, color: ON_DARK_MUTED, lineHeight: 16 },
+  swatchGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: Space.base, columnGap: Space.sm },
+  swatchItem: { flexBasis: 76, flexGrow: 1, maxWidth: 140, alignItems: 'center', gap: 6 },
+  swatchDot:  { width: 60, height: 60, borderRadius: 30, borderWidth: 1, borderColor: 'rgba(66,61,58,0.15)' },
+  swatchDotAvoid: { opacity: 0.85 },
+  swatchName: { ...Typography.bodySmall, textAlign: 'center' },
+  swatchWhy:  { ...Typography.caption, fontSize: 11, lineHeight: 15, textAlign: 'center' },
 
   bulletList: { gap: Space.sm },
   bulletRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: Space.md },
-  bulletDot:  { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.primary, marginTop: 8 },
-  bulletText: { flex: 1, ...Typography.bodySmall, color: ON_DARK_BODY, lineHeight: 20 },
+  bulletDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.primary, marginTop: 9 },
 
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.lg },
-  detailCol:  { flexBasis: 200, flexGrow: 1, gap: Space.sm },
+  twoCol: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.lg },
+  col:    { flexBasis: 220, flexGrow: 1, gap: Space.sm },
 
   outfitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
-  outfit:     { flexBasis: 200, flexGrow: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: Radius.md, padding: Space.md, gap: Space.xs },
-  outfitNum:  { ...Typography.label, color: Colors.primary },
-  outfitName: { fontFamily: SERIF, fontSize: 17, color: ON_DARK },
-
-  paletteName: { ...Typography.caption, color: ON_DARK_MUTED, fontStyle: 'italic' },
+  outfit:     { flexBasis: 180, flexGrow: 1, backgroundColor: Colors.bgSubtle, borderRadius: Radius.lg, padding: Space.base, gap: Space.xs },
+  outfitName: { fontFamily: FONT_DISPLAY, fontSize: 20, lineHeight: 26, color: Colors.text },
 })

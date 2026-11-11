@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react'
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Switch,
-  SafeAreaView, ScrollView, Image, ActivityIndicator,
-} from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Switch, Image, ActivityIndicator, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useProfileStore, useMembershipStore, isPremium, creditsLeft } from '../../lib/store'
 import { supabase } from '../../lib/supabaseClient'
@@ -10,13 +7,16 @@ import { upsertProfile, uploadUserPhoto } from '../../lib/supabaseStorage'
 import { postEvent, deleteAccount } from '../../lib/api'
 import { pickImageDataUri } from '../../lib/imageInput'
 import { FREE_CREDITS } from '../../lib/pricing'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon, PillButton } from '../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
+import {
+  Card, Divider, Field, Icon, Loading, Notice, Page, PageHeader, PillButton, Segmented, TextLink, confirmDialog, toast,
+} from '../../lib/ui'
 import { FIT_LABELS, type Measurements } from '../../lib/types'
 import { DateOfBirthField, parseDob, dobFromIso, type DobValue } from '../../components/DateOfBirthField'
 
 // Profile tab (spec §3.2): Your photo · Your size · Fit preference · Account,
-// with a completeness bar. Guests can fill photo / size / fit for this session.
+// with the three set-up steps on top. Guests can fill photo / size / fit for
+// this session.
 
 type Session = { id: string; email: string } | null
 
@@ -26,6 +26,8 @@ const FRAMING_TIPS = [
   'Plain background, good light',
   'Fitted clothes show your shape best',
 ]
+
+const STEPS = ['Your photo', 'Your size', 'Fit preference'] as const
 
 export default function ProfileScreen() {
   const profile = useProfileStore()
@@ -45,46 +47,51 @@ export default function ProfileScreen() {
   }, [session?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!checked || (session && (!profile.loaded || profile.ownerId !== session.id))) {
-    return <SafeAreaView style={s.safe}><View style={s.center}><ActivityIndicator color={Colors.primary} /></View></SafeAreaView>
+    return <Loading label="Loading your profile…" />
   }
 
   const done = [!!profile.photoUri, !!profile.measurements, !!profile.measurements?.fitChosen]
   const doneCount = done.filter(Boolean).length
+  const next = done.findIndex((d) => !d)
 
   return (
-    <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        <View style={s.column}>
-          {!session && (
-            <View style={s.card}>
-              <Text style={s.cardTitle}>Your profile</Text>
-              <Text style={s.muted}>
-                Add your photo, size and fit below — they're used for try-on and size advice. Sign in to keep them on every device.
-              </Text>
-              <PillButton label="Sign in or create account" onPress={() => router.push('/auth')} />
-            </View>
-          )}
+    <Page width="reading">
+      <PageHeader title="Your Profile" subtitle="Your photo, size and fit are used for every try-on and size recommendation." />
 
-          <View style={s.progressCard}>
-            <View style={s.rowBetween}>
-              <Text style={s.cardTitle}>Profile {doneCount} of 3 done</Text>
-              {doneCount === 3 && <Icon name="check" size={20} color={Colors.success} />}
-            </View>
-            <View style={s.bar}><View style={[s.barFill, { width: `${(doneCount / 3) * 100}%` }]} /></View>
-            {doneCount < 3 && (
-              <Text style={s.muted}>
-                {!done[0] ? 'Add your photo to try things on.' : !done[1] ? 'Add your size to get size advice.' : 'Pick your fit preference.'}
-              </Text>
-            )}
-          </View>
+      {!session && (
+        <Notice tone="info" title="You’re not signed in"
+          text="What you add here is kept for this visit only. Sign in to keep it on every device."
+          actionLabel="Sign in or create an account" onAction={() => router.push('/auth')} />
+      )}
 
-          <PhotoSection session={session} />
-          <SizeSection session={session} />
-          <FitSection session={session} />
-          {session && <AccountSection session={session} />}
+      <Card variant="sunken" style={{ gap: Space.md }}>
+        <View style={s.rowBetween}>
+          <Text style={s.cardTitle}>{doneCount === 3 ? 'Your profile is complete' : `${doneCount} of 3 steps done`}</Text>
+          {doneCount === 3 && <Icon name="success" size={22} color={Colors.success} />}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+        <View style={s.steps} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 3, now: doneCount }}>
+          {STEPS.map((label, i) => (
+            <View key={label} style={s.step}>
+              <View style={[s.stepBar, done[i] && s.stepBarDone]} />
+              <View style={s.stepLabelRow}>
+                {done[i] && <Icon name="check" size={13} color={Colors.success} />}
+                <Text style={[s.stepLabel, done[i] && { color: Colors.text }, i === next && Weight.semibold]}>{label}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+        {next >= 0 && (
+          <Text style={s.muted}>
+            {next === 0 ? 'Add your photo to try things on.' : next === 1 ? 'Add your size to get size advice.' : 'Pick how you like clothes to fit.'}
+          </Text>
+        )}
+      </Card>
+
+      <PhotoSection session={session} />
+      <SizeSection session={session} />
+      <FitSection session={session} />
+      {session && <AccountSection session={session} />}
+    </Page>
   )
 }
 
@@ -111,41 +118,44 @@ function PhotoSection({ session }: { session: Session }) {
       const path = await uploadUserPhoto(session.id, uri)
       if (!path) throw new Error('upload rejected')
       await upsertProfile(session.id, session.email, { photoPath: path })
+      toast('Photo saved.')
     } catch (e) {
       console.error('[Atelier] profile photo save failed:', e)
-      setError("Couldn't save your photo — try again.")
+      setError('Couldn’t save your photo. Check your connection and try again.')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <View style={s.card}>
-      <Text style={s.cardTitle}>Your photo</Text>
-      <Text style={s.muted}>Used for every try-on and for your Style report.</Text>
+    <Card>
+      <View style={{ gap: Space.xs }}>
+        <Text style={s.cardTitle}>Your photo</Text>
+        <Text style={s.muted}>Used for every try-on and for your Style report.</Text>
+      </View>
       <View style={s.photoRow}>
         <View style={s.photoBox}>
           {profile.photoUri
-            ? <Image source={{ uri: profile.photoUri }} style={s.photoImg} resizeMode="cover" />
-            : <View style={s.photoEmpty}><Icon name="profile" size={34} color={Colors.textFaint} /></View>}
+            ? <Image source={{ uri: profile.photoUri }} style={s.photoImg} resizeMode="cover" accessibilityLabel="Your photo" />
+            : <View style={s.photoEmpty}><Icon name="profile" size={36} color={Colors.primary} /><Text style={s.photoEmptyText}>No photo yet</Text></View>}
           {saving && <View style={s.photoSaving}><ActivityIndicator color={Colors.textOnDark} /></View>}
         </View>
         <View style={s.tips}>
-          <Text style={s.label}>FOR THE BEST RESULT</Text>
+          <Text style={s.tipsTitle}>For the best result</Text>
           {FRAMING_TIPS.map((tip) => (
             <View key={tip} style={s.tipRow}>
-              <Icon name="check" size={14} color={Colors.primary} />
+              <Icon name="check" size={15} color={Colors.primaryDark} />
               <Text style={s.tipText}>{tip}</Text>
             </View>
           ))}
         </View>
       </View>
       <View style={s.btnRow}>
-        <PillButton label={profile.photoUri ? 'Retake' : 'Camera'} icon="takePhoto" onPress={() => choose('camera')} disabled={saving} style={s.flexBtn} />
-        <PillButton label="Gallery" icon="gallery" variant="outline" onPress={() => choose('library')} disabled={saving} style={s.flexBtn} />
+        <PillButton label={profile.photoUri ? 'Retake photo' : 'Take a photo'} icon="takePhoto" size="md" onPress={() => choose('camera')} disabled={saving} style={s.flexBtn} />
+        <PillButton label="Choose from gallery" icon="gallery" variant="outline" size="md" onPress={() => choose('library')} disabled={saving} style={s.flexBtn} />
       </View>
-      {error && <Text style={s.errorText}>{error}</Text>}
-    </View>
+      {error && <Notice tone="error" text={error} />}
+    </Card>
   )
 }
 
@@ -171,6 +181,7 @@ async function saveMeasurements(session: Session, m: Measurements) {
 
 function SizeSection({ session }: { session: Session }) {
   const profile = useProfileStore()
+  const { width } = useWindowDimensions()
   const saved = profile.measurements
   const [editing, setEditing] = useState(!saved)
   const [form, setForm] = useState(formFrom(saved))
@@ -196,55 +207,54 @@ function SizeSection({ session }: { session: Session }) {
       await saveMeasurements(session, m)
       if (session) postEvent('profile_completed', { metadata: { measurements: true, photo: !!profile.photoUri } })
       setEditing(false)
-      setMsg({ ok: true, text: 'Saved.' })
+      toast('Size saved.')
     } catch (e: any) {
-      setMsg({ ok: false, text: `Couldn't save — ${e?.message ?? 'try again'}.` })
+      setMsg({ ok: false, text: `Couldn’t save — ${e?.message ?? 'try again'}.` })
     } finally {
       setBusy(false)
     }
   }
 
+  // Three fields a row from tablet width, two on phones.
+  const cell = { flexBasis: width < 520 ? '46%' : '30%' } as const
   return (
-    <View style={s.card}>
+    <Card>
       <View style={s.rowBetween}>
-        <Text style={s.cardTitle}>Your size</Text>
+        <View style={{ gap: Space.xs, flex: 1 }}>
+          <Text style={s.cardTitle}>Your size</Text>
+          <Text style={s.muted}>Body measurements, not garment sizes.</Text>
+        </View>
         {!editing && saved && (
-          <TouchableOpacity onPress={() => { setEditing(true); setMsg(null) }}><Text style={s.link}>Edit</Text></TouchableOpacity>
+          <TextLink label="Edit" icon="edit" onPress={() => { setEditing(true); setMsg(null) }} />
         )}
       </View>
       {editing ? (
         <>
           <View style={s.grid}>
             {SIZE_FIELDS.map(({ key, label, unit }) => (
-              <View key={key} style={s.field}>
-                <Text style={s.label}>{label.toUpperCase()}</Text>
-                <View style={s.inputWrap}>
-                  <TextInput
-                    style={s.input} value={form[key]} onChangeText={(v) => setForm({ ...form, [key]: v })}
-                    keyboardType="decimal-pad" placeholder="0" placeholderTextColor={Colors.textFaint}
-                  />
-                  <Text style={s.unit}>{unit}</Text>
-                </View>
-              </View>
-            ))}
-            <View style={s.field}>
-              <Text style={s.label}>USUAL SIZE</Text>
-              <TextInput
-                style={[s.input, s.inputText]} value={form.usualSize} onChangeText={(v) => setForm({ ...form, usualSize: v })}
-                placeholder="e.g. M / 32" placeholderTextColor={Colors.textFaint} autoCapitalize="characters"
+              <Field
+                key={key} label={label} value={form[key]} onChangeText={(v) => setForm({ ...form, [key]: v })}
+                keyboardType="decimal-pad" placeholder="0"
+                right={<Text style={s.unit}>{unit}</Text>}
+                containerStyle={[s.field, cell]}
               />
-            </View>
+            ))}
+            <Field
+              label="Usual size" value={form.usualSize} onChangeText={(v) => setForm({ ...form, usualSize: v })}
+              placeholder="e.g. M / 32" autoCapitalize="characters" containerStyle={[s.field, cell]}
+            />
           </View>
+          {msg && !msg.ok && <Notice tone="error" text={msg.text} />}
           <View style={s.btnRow}>
-            {saved && <PillButton label="Cancel" variant="outline" onPress={() => { setEditing(false); setForm(formFrom(saved)); setMsg(null) }} style={s.flexBtn} />}
-            <PillButton label="Save" onPress={save} loading={busy} style={s.flexBtn} />
+            {saved && <PillButton label="Cancel" variant="ghost" size="md" onPress={() => { setEditing(false); setForm(formFrom(saved)); setMsg(null) }} />}
+            <PillButton label="Save size" size="md" onPress={save} loading={busy} style={{ minWidth: 160 }} />
           </View>
         </>
       ) : saved ? (
         <View style={s.savedGrid}>
           {SIZE_FIELDS.map(({ key, label, unit }) => (
             <View key={key} style={s.savedItem}>
-              <Text style={s.savedValue}>{saved[key] != null ? `${saved[key]} ${unit}` : '—'}</Text>
+              <Text style={s.savedValue}>{saved[key] != null ? saved[key] : '—'}<Text style={s.savedUnit}> {unit}</Text></Text>
               <Text style={s.savedLabel}>{label}</Text>
             </View>
           ))}
@@ -254,8 +264,7 @@ function SizeSection({ session }: { session: Session }) {
           </View>
         </View>
       ) : null}
-      {msg && <Text style={msg.ok ? s.okText : s.errorText}>{msg.text}</Text>}
-    </View>
+    </Card>
   )
 }
 
@@ -275,31 +284,36 @@ function FitSection({ session }: { session: Session }) {
     setMsg(null)
     try {
       await saveMeasurements(session, { ...saved, fitPreference: choice, fitChosen: true })
-      setMsg({ ok: true, text: 'Saved.' })
+      toast('Fit preference saved.')
     } catch (e: any) {
-      setMsg({ ok: false, text: `Couldn't save — ${e?.message ?? 'try again'}.` })
+      setMsg({ ok: false, text: `Couldn’t save — ${e?.message ?? 'try again'}.` })
     } finally {
       setBusy(false)
     }
   }
 
   const unchanged = !!saved?.fitChosen && saved.fitPreference === choice
+  const fits = (['snug', 'true-to-size', 'relaxed'] as const).map((f) => ({ value: f, label: FIT_LABELS[f] }))
   return (
-    <View style={s.card}>
-      <Text style={s.cardTitle}>Fit preference</Text>
-      <Text style={s.muted}>How you like clothes to sit — used for every size recommendation.</Text>
-      <View style={s.chips}>
-        {(['snug', 'true-to-size', 'relaxed'] as const).map((f) => (
-          <TouchableOpacity key={f} style={[s.chip, choice === f && s.chipOn]} onPress={() => { setChoice(f); setMsg(null) }}>
-            <Text style={[s.chipText, choice === f && s.chipTextOn]}>{FIT_LABELS[f]}</Text>
-          </TouchableOpacity>
-        ))}
+    <Card>
+      <View style={{ gap: Space.xs }}>
+        <Text style={s.cardTitle}>Fit preference</Text>
+        <Text style={s.muted}>How you like clothes to sit — used for every size recommendation.</Text>
       </View>
+      <Segmented
+        options={fits} value={(choice ?? '') as Measurements['fitPreference']} size="md"
+        onChange={(f) => { setChoice(f); setMsg(null) }} disabled={!saved} accessibilityLabel="Fit preference"
+      />
       {!saved
         ? <Text style={s.muted}>Save your size first, then your fit.</Text>
-        : <PillButton label={unchanged ? 'Saved' : 'Save'} onPress={save} loading={busy} disabled={!choice || unchanged} />}
-      {msg && !msg.ok && <Text style={s.errorText}>{msg.text}</Text>}
-    </View>
+        : (
+          <View style={s.btnRow}>
+            <PillButton label={unchanged ? 'Saved' : 'Save fit'} icon={unchanged ? 'check' : undefined} size="md" onPress={save}
+              loading={busy} disabled={!choice || unchanged} style={{ minWidth: 160 }} />
+          </View>
+        )}
+      {msg && !msg.ok && <Notice tone="error" text={msg.text} />}
+    </Card>
   )
 }
 
@@ -316,7 +330,6 @@ function AccountSection({ session }: { session: NonNullable<Session> }) {
   const [dob, setDob] = useState<DobValue>(dobFromIso(profile.dateOfBirth))
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   async function saveDetails() {
@@ -329,8 +342,9 @@ function AccountSection({ session }: { session: NonNullable<Session> }) {
       await upsertProfile(session.id, session.email, { name: name.trim(), dateOfBirth: parsed.iso })
       profile.setAccount({ name: name.trim(), dateOfBirth: parsed.iso })
       setEditing(false)
+      toast('Details saved.')
     } catch (e: any) {
-      setMsg({ ok: false, text: `Couldn't save — ${e?.message ?? 'try again'}.` })
+      setMsg({ ok: false, text: `Couldn’t save — ${e?.message ?? 'try again'}.` })
     } finally {
       setBusy(false)
     }
@@ -342,11 +356,17 @@ function AccountSection({ session }: { session: NonNullable<Session> }) {
       await upsertProfile(session.id, session.email, { [key]: value })
     } catch {
       profile.setAccount({ [key]: !value })
-      setMsg({ ok: false, text: "Couldn't update notification settings." })
+      setMsg({ ok: false, text: 'Couldn’t update your notification settings. Try again.' })
     }
   }
 
   async function removeAccount() {
+    const ok = await confirmDialog({
+      title: 'Delete your account?',
+      body: 'Your photo, size, style report, history and remaining credits are removed permanently. This can’t be undone.',
+      confirmLabel: 'Delete account', danger: true,
+    })
+    if (!ok) return
     setDeleting(true)
     setMsg(null)
     try {
@@ -365,180 +385,135 @@ function AccountSection({ session }: { session: NonNullable<Session> }) {
   const planLabel = premium ? 'Premium — unlimited' : membership?.plan ? 'Credit plan' : 'Free starter credits'
 
   return (
-    <View style={s.card}>
+    <Card>
       <View style={s.rowBetween}>
         <Text style={s.cardTitle}>Account</Text>
-        {!editing && <TouchableOpacity onPress={() => { setEditing(true); setName(profile.name ?? ''); setDob(dobFromIso(profile.dateOfBirth)) }}><Text style={s.link}>Edit</Text></TouchableOpacity>}
+        {!editing && <TextLink label="Edit" icon="edit" onPress={() => { setEditing(true); setName(profile.name ?? ''); setDob(dobFromIso(profile.dateOfBirth)) }} />}
       </View>
 
       {editing ? (
-        <>
-          <Text style={s.label}>NAME</Text>
-          <TextInput style={[s.input, s.inputText]} value={name} onChangeText={setName} autoCapitalize="words" placeholderTextColor={Colors.textFaint} />
-          <Text style={[s.label, { marginTop: Space.sm }]}>DATE OF BIRTH</Text>
-          <DateOfBirthField value={dob} onChange={setDob} />
-          <View style={s.btnRow}>
-            <PillButton label="Cancel" variant="outline" onPress={() => { setEditing(false); setMsg(null) }} style={s.flexBtn} />
-            <PillButton label="Save" onPress={saveDetails} loading={busy} style={s.flexBtn} />
+        <View>
+          <Field label="Name" value={name} onChangeText={setName} autoCapitalize="words" autoComplete="name" containerStyle={{ marginTop: 0 }} />
+          <View style={{ marginTop: Space.base, gap: 6 }}>
+            <Text style={Typography.fieldLabel}>Date of birth</Text>
+            <DateOfBirthField value={dob} onChange={setDob} />
           </View>
-        </>
+          <View style={[s.btnRow, { marginTop: Space.lg }]}>
+            <PillButton label="Cancel" variant="ghost" size="md" onPress={() => { setEditing(false); setMsg(null) }} />
+            <PillButton label="Save details" size="md" onPress={saveDetails} loading={busy} style={{ minWidth: 160 }} />
+          </View>
+        </View>
       ) : (
-        <View style={s.infoList}>
+        <View>
           <InfoRow label="Name" value={profile.name ?? 'Not set'} />
           <InfoRow label="Email" value={session.email} />
-          <InfoRow label="Date of birth" value={dobLabel} />
+          <InfoRow label="Date of birth" value={dobLabel} last />
         </View>
       )}
 
-      <View style={s.divider} />
+      <Divider />
       <View style={s.rowBetween}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.label}>PLAN & CREDITS</Text>
+        <View style={{ flex: 1, gap: 2 }}>
           <Text style={s.value}>{planLabel}</Text>
           <Text style={s.muted}>{premium ? 'No limit on try-ons.' : `${balance} credit${balance === 1 ? '' : 's'} left · new accounts get ${FREE_CREDITS} free`}</Text>
         </View>
-        <TouchableOpacity style={s.manageBtn} onPress={() => router.navigate('/(tabs)/premium')}>
-          <Text style={s.manageText}>Manage</Text>
-        </TouchableOpacity>
+        <PillButton label="Manage" variant="outline" size="sm" onPress={() => router.navigate('/(tabs)/premium')} />
       </View>
 
-      <View style={s.divider} />
-      <Text style={s.label}>NOTIFICATIONS</Text>
+      <Divider />
+      <Text style={s.subTitle}>Notifications</Text>
       <View style={s.switchRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.value}>Email</Text>
           <Text style={s.muted}>Low-credit reminders and plan news</Text>
         </View>
-        <Switch value={profile.notifyEmail} onValueChange={(v) => toggle('notifyEmail', v)}
-          {...SWITCH_COLORS} />
+        <Switch value={profile.notifyEmail} onValueChange={(v) => toggle('notifyEmail', v)} accessibilityLabel="Email notifications" {...SWITCH_COLORS} />
       </View>
       <View style={s.switchRow}>
         <View style={{ flex: 1 }}>
-          <Text style={s.value}>Push & in-app</Text>
+          <Text style={s.value}>Push and in-app</Text>
           <Text style={s.muted}>Alerts inside Atelier</Text>
         </View>
-        <Switch value={profile.notifyPush} onValueChange={(v) => toggle('notifyPush', v)}
-          {...SWITCH_COLORS} />
+        <Switch value={profile.notifyPush} onValueChange={(v) => toggle('notifyPush', v)} accessibilityLabel="Push and in-app notifications" {...SWITCH_COLORS} />
       </View>
 
-      {msg && <Text style={msg.ok ? s.okText : s.errorText}>{msg.text}</Text>}
+      {msg && !msg.ok && <Notice tone="error" text={msg.text} />}
 
-      <View style={s.divider} />
-      <TouchableOpacity style={s.actionRow} onPress={() => supabase.auth.signOut()}>
-        <Icon name="logout" size={18} color={Colors.text} />
-        <Text style={s.value}>Sign out</Text>
-      </TouchableOpacity>
-
-      {confirmDelete ? (
-        <View style={s.dangerBox}>
-          <Text style={s.value}>Delete your account?</Text>
-          <Text style={s.muted}>Your photo, size, style report, history and remaining credits are removed permanently. This can't be undone.</Text>
-          <View style={s.btnRow}>
-            <PillButton label="Cancel" variant="outline" onPress={() => setConfirmDelete(false)} disabled={deleting} style={s.flexBtn} />
-            <TouchableOpacity style={[s.deleteBtn, s.flexBtn, deleting && { opacity: 0.6 }]} onPress={removeAccount} disabled={deleting}>
-              {deleting ? <ActivityIndicator color={Colors.textOnDark} /> : <Text style={s.deleteBtnText}>Delete account</Text>}
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <TouchableOpacity style={s.actionRow} onPress={() => setConfirmDelete(true)}>
-          <Icon name="trash" size={18} color={Colors.error} />
-          <Text style={[s.value, { color: Colors.error }]}>Delete account</Text>
+      <Divider />
+      <View style={s.dangerRow}>
+        <PillButton label="Sign out" icon="logout" variant="outline" size="sm" onPress={() => supabase.auth.signOut()} />
+        <TouchableOpacity style={s.deleteLink} onPress={removeAccount} disabled={deleting} accessibilityRole="button">
+          {deleting ? <ActivityIndicator color={Colors.error} /> : <Icon name="trash" size={16} color={Colors.error} />}
+          <Text style={s.deleteText}>Delete account</Text>
         </TouchableOpacity>
-      )}
-    </View>
+      </View>
+    </Card>
   )
 }
 
 // Brand colours for toggles. activeThumbColor / activeTrackColor are the web
 // (react-native-web) names; without them the "on" state falls back to teal.
 const SWITCH_COLORS = {
-  trackColor: { true: Colors.primary, false: Colors.border },
+  trackColor: { true: Colors.secondary, false: Colors.border },
   thumbColor: Colors.bgCard,
-  activeTrackColor: Colors.primary,
-  activeThumbColor: Colors.secondary,
+  activeTrackColor: Colors.secondary,
+  activeThumbColor: Colors.bgCard,
   ios_backgroundColor: Colors.border,
 } as any
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
   return (
-    <View style={s.infoRow}>
+    <View style={[s.infoRow, !last && s.infoBorder]}>
       <Text style={s.infoLabel}>{label}</Text>
-      <Text style={s.value} numberOfLines={1}>{value}</Text>
+      <Text style={[s.value, { flexShrink: 1, textAlign: 'right' }]} numberOfLines={1}>{value}</Text>
     </View>
   )
 }
 
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: Colors.bg },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll: { padding: Space.base, paddingBottom: Space.xxl },
-  column: { width: '100%', maxWidth: 720, alignSelf: 'center', gap: Space.md },
-
-  card: {
-    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border,
-    padding: Space.base, gap: Space.sm,
-  },
-  progressCard: { backgroundColor: Colors.primarySubtle, borderRadius: Radius.lg, padding: Space.base, gap: Space.sm },
   cardTitle: { ...Typography.h3 },
+  subTitle:  { ...Typography.bodySmall, ...Weight.semibold },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Space.md },
-  muted:  { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 20 },
-  label:  { ...Typography.label, color: Colors.textFaint },
-  value:  { ...Typography.body, color: Colors.text },
-  link:   { ...Typography.bodySmall, color: Colors.secondary, fontWeight: '700' },
-  okText: { ...Typography.bodySmall, color: Colors.success },
-  errorText: { ...Typography.bodySmall, color: Colors.error },
+  muted:  { ...Typography.bodySmall, color: Colors.textMuted },
+  value:  { ...Typography.body },
 
-  bar:     { height: 8, borderRadius: Radius.full, backgroundColor: Colors.bgCard, overflow: 'hidden' },
-  barFill: { height: '100%', backgroundColor: Colors.secondary, borderRadius: Radius.full },
+  steps:        { flexDirection: 'row', gap: Space.sm },
+  step:         { flex: 1, gap: Space.sm },
+  stepBar:      { height: 4, borderRadius: 2, backgroundColor: Colors.border },
+  stepBarDone:  { backgroundColor: Colors.secondary },
+  stepLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  stepLabel:    { ...Typography.caption, flexShrink: 1 },
 
-  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.base, marginTop: Space.xs },
-  photoBox: {
-    width: 120, height: 160, borderRadius: Radius.md, overflow: 'hidden',
-    backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.border,
-  },
-  photoImg:    { width: '100%', height: '100%' },
-  photoEmpty:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  photoSaving: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
-  tips:    { flex: 1, minWidth: 180, gap: Space.xs },
-  tipRow:  { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
-  tipText: { ...Typography.bodySmall, color: Colors.textMuted, flex: 1 },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.lg },
+  photoBox: { width: 132, height: 176, borderRadius: Radius.md, overflow: 'hidden', backgroundColor: Colors.bgSubtle },
+  photoImg: { width: '100%', height: '100%' },
+  photoEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Space.xs },
+  photoEmptyText: { ...Typography.caption },
+  photoSaving: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(42,39,37,0.45)', alignItems: 'center', justifyContent: 'center' },
+  tips:      { flex: 1, minWidth: 200, gap: Space.sm, justifyContent: 'center' },
+  tipsTitle: { ...Typography.bodySmall, ...Weight.semibold },
+  tipRow:    { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
+  tipText:   { ...Typography.bodySmall, color: Colors.textMuted, flex: 1 },
 
-  btnRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm, marginTop: Space.sm },
-  flexBtn: { flexGrow: 1, flexBasis: 140 },
+  btnRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm, justifyContent: 'flex-end' },
+  flexBtn: { flexGrow: 1, flexBasis: 180 },
 
-  grid:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
-  // Three per row on every width (3 × 2 grid for the six fields).
-  field: { flexGrow: 1, flexBasis: '30%', minWidth: 96, gap: Space.xs },
-  inputWrap: { flexDirection: 'row', alignItems: 'center', gap: Space.xs, minWidth: 0 },
-  input: {
-    // minWidth 0: a web <input> otherwise refuses to shrink below ~170px and overlaps its neighbours.
-    flex: 1, minWidth: 0, width: '100%', backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: Space.md, paddingVertical: 11, ...Typography.body, color: Colors.text, textAlign: 'right',
-  },
-  inputText: { textAlign: 'left' },
-  unit: { ...Typography.caption, color: Colors.textMuted, width: 20 },
+  grid:  { flexDirection: 'row', flexWrap: 'wrap', columnGap: Space.md },
+  field: { flexGrow: 1, minWidth: 120 },
+  unit:  { ...Typography.caption, paddingRight: Space.base },
 
-  savedGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
-  savedItem:  { flexBasis: 96, flexGrow: 1, backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, padding: Space.md, gap: 2 },
-  savedValue: { ...Typography.h3, fontSize: 17 },
-  savedLabel: { ...Typography.caption, color: Colors.textMuted },
+  savedGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm },
+  savedItem:  { flexBasis: 100, flexGrow: 1, backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, padding: Space.md, gap: 2 },
+  savedValue: { ...Typography.h3, fontSize: 18 },
+  savedUnit:  { ...Typography.caption },
+  savedLabel: { ...Typography.caption },
 
-  chips:      { flexDirection: 'row', gap: Space.sm, flexWrap: 'wrap', marginVertical: Space.xs },
-  chip:       { flexGrow: 1, flexBasis: 90, alignItems: 'center', paddingVertical: 12, borderRadius: Radius.full, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.bgSubtle },
-  chipOn:     { backgroundColor: Colors.secondary, borderColor: Colors.secondary },
-  chipText:   { ...Typography.bodySmall, color: Colors.text, fontWeight: '600' },
-  chipTextOn: { color: Colors.textOnDark },
+  infoRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space.md, paddingVertical: Space.md },
+  infoBorder: { borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle },
+  infoLabel:  { ...Typography.bodySmall, color: Colors.textMuted },
+  switchRow:  { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.xs },
 
-  infoList:  { gap: Space.sm },
-  infoRow:   { flexDirection: 'row', justifyContent: 'space-between', gap: Space.md },
-  infoLabel: { ...Typography.bodySmall, color: Colors.textMuted },
-  divider:   { height: 1, backgroundColor: Colors.borderSubtle, marginVertical: Space.sm },
-  manageBtn: { borderWidth: 1.5, borderColor: Colors.secondary, borderRadius: Radius.full, paddingHorizontal: Space.base, paddingVertical: Space.sm },
-  manageText: { ...Typography.bodySmall, color: Colors.secondary, fontWeight: '600' },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.xs },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, paddingVertical: Space.sm },
-  dangerBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.md, padding: Space.base, gap: Space.sm },
-  deleteBtn: { minHeight: 56, borderRadius: Radius.full, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Space.lg },
-  deleteBtnText: { ...Typography.body, color: Colors.textOnDark, fontWeight: '600' },
+  dangerRow:  { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Space.md },
+  deleteLink: { flexDirection: 'row', alignItems: 'center', gap: Space.xs, paddingVertical: Space.sm },
+  deleteText: { ...Typography.bodySmall, ...Weight.semibold, color: Colors.error },
 })

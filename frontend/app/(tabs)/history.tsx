@@ -1,14 +1,16 @@
 import { useState, useCallback } from 'react'
-import { useFocusEffect } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import {
-  View, Text, FlatList, Image, TouchableOpacity, StyleSheet, SafeAreaView,
-  ScrollView, Platform, Linking, ActivityIndicator, Modal,
+  View, Text, FlatList, Image, TouchableOpacity, Pressable, StyleSheet, SafeAreaView,
+  ScrollView, Platform, Linking, Modal, useWindowDimensions,
 } from 'react-native'
 import { useGarmentStore, useMembershipStore, useProfileStore, isPremium } from '../../lib/store'
 import { getCurrentUserId, listTryOnsFromCloud, deleteTryOnFromCloud } from '../../lib/supabaseStorage'
 import { downloadImage as nativeSave, shareImage } from '../../lib/shareImage'
-import { Colors, Typography, Space, Radius, Shadow } from '../../lib/theme'
-import { Icon, PillButton } from '../../lib/ui'
+import { Colors, Typography, Space, Radius, Shadow, Layout, Weight, FONT_DISPLAY } from '../../lib/theme'
+import {
+  Card, Chip, EmptyState, Icon, Notice, PageHeader, PillButton, Segmented, Tag, TextLink, confirmDialog, displayProps, toast,
+} from '../../lib/ui'
 import type { GarmentCheck } from '../../lib/types'
 
 // History tab (spec §3.6): every fitting newest first with try-on + garment,
@@ -17,12 +19,7 @@ import type { GarmentCheck } from '../../lib/types'
 
 type Filter = 'all' | 'links' | 'screenshots'
 
-function callColor(call?: string) {
-  return call === 'Yes' ? Colors.success : call === 'Skip' ? Colors.error : Colors.warning
-}
-function callBg(call?: string) {
-  return call === 'Yes' ? Colors.successBg : call === 'Skip' ? Colors.errorBg : Colors.warningBg
-}
+const callTone = (call?: string) => (call === 'Yes' ? 'success' : call === 'Skip' ? 'error' : 'warning') as 'success' | 'error' | 'warning'
 const callLabel = (call?: string) => (call === 'Yes' ? 'Yes, buy it' : call === 'Skip' ? 'Skip it' : 'Maybe')
 
 const domainOf = (url?: string) => {
@@ -93,37 +90,36 @@ async function exportImage(kind: 'download' | 'share', imageUri: string, clean: 
 function HistoryCard({ item, onOpen }: { item: GarmentCheck; onOpen: () => void }) {
   const tryOn = tryOnOf(item)
   const garment = item.garment.imageBase64 || null
+  const v = item.verdictResult
   return (
-    <TouchableOpacity style={s.card} onPress={onOpen} activeOpacity={0.85}>
+    <Pressable
+      style={(st: any) => [s.card, st.hovered && s.cardHover]} onPress={onOpen}
+      accessibilityRole="button" accessibilityLabel={`${item.garment.name || 'Garment'}. Open details`}
+    >
       <View style={s.thumbs}>
         {tryOn ? (
-          <View style={s.thumbWrap}>
+          <View>
             <Image source={{ uri: tryOn }} style={s.thumb} resizeMode="cover" />
-            <View style={s.thumbWm} pointerEvents="none"><Text style={s.thumbWmText}>ATELIER</Text></View>
+            {garment && <Image source={{ uri: garment }} style={s.thumbInset} resizeMode="cover" />}
           </View>
-        ) : null}
-        {garment ? (
-          <Image source={{ uri: garment }} style={[s.thumb, tryOn ? s.thumbSmall : null]} resizeMode="cover" />
-        ) : !tryOn ? (
+        ) : garment ? (
+          <Image source={{ uri: garment }} style={s.thumb} resizeMode="cover" />
+        ) : (
           <View style={[s.thumb, s.thumbEmpty]}><Icon name="tryOn" size={22} color={Colors.textFaint} /></View>
-        ) : null}
+        )}
       </View>
       <View style={s.cardBody}>
-        <Text style={s.source} numberOfLines={1}>{sourceLine(item).toUpperCase()}</Text>
+        <Text {...displayProps(15)} style={s.source} numberOfLines={1}>{sourceLine(item).toUpperCase()}</Text>
         <Text style={s.name} numberOfLines={2}>{item.garment.name || 'Garment'}</Text>
         <Text style={s.date}>{new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
         <View style={s.pills}>
-          {tryOn && <View style={s.pillOutline}><Text style={s.pillOutlineText}>Tried on</Text></View>}
-          {item.sizeResult && <View style={s.pillOutline}><Text style={s.pillOutlineText}>Size {item.sizeResult.size}</Text></View>}
-          {item.verdictResult && (
-            <View style={[s.pill, { backgroundColor: callColor(item.verdictResult.call) }]}>
-              <Text style={s.pillText}>{callLabel(item.verdictResult.call)}</Text>
-            </View>
-          )}
+          {tryOn && <Tag label="Tried on" tone="dark" />}
+          {item.sizeResult && <Tag label={`Size ${item.sizeResult.size}`} />}
+          {v && <Tag label={callLabel(v.call)} tone={callTone(v.call)} dot />}
         </View>
       </View>
-      <Icon name="chevron" size={20} color={Colors.textFaint} style={{ alignSelf: 'center', marginRight: Space.sm }} />
-    </TouchableOpacity>
+      <Icon name="chevron" size={20} color={Colors.textMuted} style={{ alignSelf: 'center', marginRight: Space.base }} />
+    </Pressable>
   )
 }
 
@@ -135,7 +131,6 @@ function HistoryDetail({
   const tryOn = tryOnOf(item)
   const [view, setView] = useState<'tryon' | 'original'>('tryon')
   const [busy, setBusy] = useState<null | 'download' | 'share' | 'delete'>(null)
-  const [confirm, setConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const shown = view === 'tryon' ? (tryOn ?? item.garment.imageBase64) : (userPhoto ?? item.garment.imageBase64)
@@ -152,10 +147,15 @@ function HistoryDetail({
   }
 
   async function remove() {
+    const ok = await confirmDialog({
+      title: 'Delete this fitting?', body: 'The try-on, size and verdict for this piece are removed from every device. This can’t be undone.',
+      confirmLabel: 'Delete fitting', danger: true,
+    })
+    if (!ok) return
     setBusy('delete')
     setError(null)
-    try { await onDelete() }
-    catch (e: any) { setError(`Couldn't delete — ${e?.message ?? 'try again'}.`); setBusy(null) }
+    try { await onDelete(); toast('Fitting deleted.') }
+    catch (e: any) { setError(`Couldn’t delete — ${e?.message ?? 'try again'}.`); setBusy(null) }
   }
 
   return (
@@ -164,85 +164,70 @@ function HistoryDetail({
         <SafeAreaView style={d.sheet}>
           <View style={d.header}>
             <Text style={d.title} numberOfLines={1}>{item.garment.name || 'Garment'}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Close">
-              <Icon name="close" size={24} color={Colors.textMuted} />
+            <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close" style={d.close}>
+              <Icon name="close" size={20} color={Colors.text} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={d.scroll}>
             <View style={d.layout}>
               <View style={d.imageCol}>
                 {tryOn && (
-                  <View style={d.toggle}>
-                    {(['tryon', 'original'] as const).map((k) => (
-                      <TouchableOpacity key={k} style={[d.toggleBtn, view === k && d.toggleOn]} onPress={() => setView(k)}>
-                        <Text style={[d.toggleText, view === k && d.toggleTextOn]}>{k === 'tryon' ? 'Try-On' : 'Original'}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <Segmented
+                    options={[{ value: 'tryon', label: 'Try-on' }, { value: 'original', label: 'Original' }] as const}
+                    value={view} onChange={setView} size="sm" style={{ alignSelf: 'center', minWidth: 240 }}
+                  />
                 )}
                 <View>
                   <Image source={{ uri: shown }} style={d.image} resizeMode="contain" />
-                  {view === 'tryon' && tryOn && <Text style={d.badge}>AI TRY-ON</Text>}
+                  {view === 'tryon' && tryOn && <View style={d.badge}><Tag label="AI try-on" tone="dark" /></View>}
                 </View>
                 {tryOn && (
                   <View style={d.btnRow}>
-                    <PillButton label="Download" icon="download" onPress={() => act('download')} loading={busy === 'download'} disabled={!!busy} style={d.flexBtn} />
-                    <PillButton label="Share" icon="share" variant="outline" onPress={() => act('share')} loading={busy === 'share'} disabled={!!busy} style={d.flexBtn} />
+                    <PillButton label="Download" icon="download" size="md" onPress={() => act('download')} loading={busy === 'download'} disabled={!!busy} style={d.flexBtn} />
+                    <PillButton label="Share" icon="share" size="md" variant="outline" onPress={() => act('share')} loading={busy === 'share'} disabled={!!busy} style={d.flexBtn} />
                   </View>
                 )}
-                {tryOn && !clean && <Text style={d.note}>Free downloads carry a light Atelier watermark. Buy any plan for clean images.</Text>}
+                {tryOn && !clean && <Text style={d.note}>Free downloads carry a light Atelier watermark. Any plan gives clean images.</Text>}
               </View>
 
               <View style={d.infoCol}>
-                <View style={d.section}>
-                  <Text style={d.label}>GARMENT</Text>
-                  {!!item.garment.imageBase64 && view === 'tryon' && tryOn && (
-                    <Image source={{ uri: item.garment.imageBase64 }} style={d.garmentThumb} resizeMode="cover" />
-                  )}
-                  <Text style={d.body}>{sourceLine(item)}{item.garment.price ? ` · ${item.garment.price}` : ''}</Text>
-                  <Text style={d.muted}>{new Date(item.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
-                  {item.garment.sourceUrl && (
-                    <TouchableOpacity onPress={() => Linking.openURL(item.garment.sourceUrl!)}>
-                      <Text style={d.link}>Open product page</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                <Card style={{ gap: Space.sm }}>
+                  <Text style={d.label}>THE PIECE</Text>
+                  <View style={{ flexDirection: 'row', gap: Space.base, alignItems: 'flex-start' }}>
+                    {!!item.garment.imageBase64 && view === 'tryon' && tryOn && (
+                      <Image source={{ uri: item.garment.imageBase64 }} style={d.garmentThumb} resizeMode="cover" />
+                    )}
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={d.bodyStrong}>{sourceLine(item)}{item.garment.price ? ` · ${item.garment.price}` : ''}</Text>
+                      <Text style={d.muted}>{new Date(item.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
+                      {item.garment.sourceUrl && <TextLink label="Open product page" icon="link" onPress={() => Linking.openURL(item.garment.sourceUrl!)} />}
+                    </View>
+                  </View>
+                </Card>
 
                 {size && (
-                  <View style={d.section}>
-                    <Text style={d.label}>SIZE</Text>
+                  <Card style={{ gap: Space.sm }}>
+                    <Text style={d.label}>YOUR SIZE</Text>
                     <Text style={d.size}>{size.size}</Text>
                     <Text style={d.body}>{size.explanation}</Text>
-                  </View>
+                  </Card>
                 )}
 
                 {v && (
-                  <View style={[d.section, d.verdict, { backgroundColor: callBg(v.call) }]}>
-                    <Text style={[d.label, { color: callColor(v.call) }]}>SHOULD I BUY IT?</Text>
-                    <Text style={d.verdictCall}>{callLabel(v.call)}</Text>
-                    <Text style={d.body}>{v.verdict}</Text>
-                    {!!v.whyItWorks && v.whyItWorks !== '—' && <Text style={d.muted}>{v.whyItWorks}</Text>}
-                  </View>
-                )}
-
-                {error && <Text style={d.error}>{error}</Text>}
-
-                {confirm ? (
-                  <View style={d.dangerBox}>
-                    <Text style={d.body}>Delete this fitting? This can't be undone.</Text>
-                    <View style={d.btnRow}>
-                      <PillButton label="Cancel" variant="outline" onPress={() => setConfirm(false)} disabled={busy === 'delete'} style={d.flexBtn} />
-                      <TouchableOpacity style={[d.deleteBtn, d.flexBtn]} onPress={remove} disabled={busy === 'delete'}>
-                        {busy === 'delete' ? <ActivityIndicator color={Colors.textOnDark} /> : <Text style={d.deleteText}>Delete</Text>}
-                      </TouchableOpacity>
+                  <Card style={{ gap: Space.sm }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space.sm }}>
+                      <Text style={d.label}>SHOULD I BUY IT?</Text>
+                      <Tag label={callLabel(v.call)} tone={callTone(v.call)} dot />
                     </View>
-                  </View>
-                ) : (
-                  <TouchableOpacity style={d.deleteLink} onPress={() => setConfirm(true)}>
-                    <Icon name="trash" size={18} color={Colors.error} />
-                    <Text style={[d.body, { color: Colors.error }]}>Delete</Text>
-                  </TouchableOpacity>
+                    <Text style={d.verdictLine}>{v.verdict}</Text>
+                    {!!v.whyItWorks && v.whyItWorks !== '—' && <Text style={d.muted}>{v.whyItWorks}</Text>}
+                  </Card>
                 )}
+
+                {error && <Notice tone="error" text={error} />}
+
+                <PillButton label="Delete fitting" icon="trash" variant="ghost" size="sm" onPress={remove}
+                  loading={busy === 'delete'} disabled={!!busy} style={{ alignSelf: 'flex-start' }} />
               </View>
             </View>
           </ScrollView>
@@ -254,6 +239,7 @@ function HistoryDetail({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function HistoryScreen() {
+  const { width } = useWindowDimensions()
   const store = useGarmentStore()
   const { membership } = useMembershipStore()
   // Clean (un-watermarked) exports for premium or anyone who has bought credits.
@@ -318,110 +304,93 @@ export default function HistoryScreen() {
     screenshots: merged.filter((c) => c.garment.source !== 'url').length,
   }
 
+  const gutter = Layout.gutter(width)
+  const columns = width >= 820 ? 2 : 1
+
   return (
-    <SafeAreaView style={s.safe}>
+    <View style={s.safe}>
       <FlatList
+        key={columns}
         data={shown}
+        numColumns={columns}
         keyExtractor={(c) => c.id}
-        contentContainerStyle={s.list}
+        columnWrapperStyle={columns > 1 ? { gap: Space.base } : undefined}
+        contentContainerStyle={[s.list, { paddingHorizontal: gutter, maxWidth: Layout.app + gutter * 2 }]}
         ListHeaderComponent={
           <View style={s.headerWrap}>
+            <PageHeader title="History" subtitle="Every fitting, newest first." />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
               {([['all', 'All'], ['links', 'From links'], ['screenshots', 'From screenshots']] as const).map(([k, label]) => (
-                <TouchableOpacity key={k} style={[s.filterChip, filter === k && s.filterOn]} onPress={() => setFilter(k)}>
-                  <Text style={[s.filterText, filter === k && s.filterTextOn]}>{label} · {counts[k]}</Text>
-                </TouchableOpacity>
+                <Chip key={k} label={label} count={counts[k]} selected={filter === k} onPress={() => setFilter(k)} />
               ))}
             </ScrollView>
           </View>
         }
         ListEmptyComponent={
-          <View style={s.empty}>
-            <Icon name="tryOn" size={48} color={Colors.border} />
-            <Text style={s.emptyTitle}>{merged.length ? 'Nothing here yet' : 'No fittings yet'}</Text>
-            <Text style={s.emptyHint}>
-              {merged.length ? 'Try another filter.' : userId ? 'Add a garment on Home and try it on.' : 'Sign in to keep your fittings on every device.'}
-            </Text>
-          </View>
+          merged.length ? (
+            <EmptyState icon="filter" title="Nothing here yet" body="No fittings match this filter."
+              secondary={{ label: 'Show all fittings', onPress: () => setFilter('all') }} />
+          ) : (
+            <EmptyState icon="tryOn" title="No fittings yet"
+              body={userId ? 'Add a piece on Home and try it on. Every fitting is kept here.' : 'Sign in to keep your fittings on every device.'}
+              action={userId ? { label: 'Add a piece', icon: 'upload', onPress: () => router.navigate('/(tabs)') } : { label: 'Sign in', onPress: () => router.push('/auth') }} />
+          )
         }
-        renderItem={({ item }) => <HistoryCard item={item} onOpen={() => setOpenId(item.id)} />}
+        renderItem={({ item }) => <View style={{ flex: 1 / columns }}><HistoryCard item={item} onOpen={() => setOpenId(item.id)} /></View>}
       />
       {open && <HistoryDetail item={open} clean={clean} onClose={() => setOpenId(null)} onDelete={() => removeItem(open.id)} />}
-    </SafeAreaView>
+    </View>
   )
 }
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bg },
-  list: { padding: Space.base, gap: Space.md, paddingBottom: Space.xxl, width: '100%', maxWidth: 820, alignSelf: 'center' },
-  headerWrap: { marginBottom: Space.xs },
+  list: { paddingTop: Space.lg, gap: Space.base, paddingBottom: Space.xxl + Space.lg, width: '100%', alignSelf: 'center' },
+  headerWrap: { gap: Space.lg, marginBottom: Space.sm },
   filters:    { gap: Space.sm },
-  filterChip: { paddingHorizontal: Space.base, paddingVertical: 9, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard },
-  filterOn:   { backgroundColor: Colors.secondary, borderColor: Colors.secondary },
-  filterText: { ...Typography.bodySmall, color: Colors.text },
-  filterTextOn: { color: Colors.textOnDark, fontWeight: '600' },
 
-  card: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, flexDirection: 'row', overflow: 'hidden', ...Shadow.card },
-  thumbs:    { flexDirection: 'row' },
-  thumbWrap: { position: 'relative' },
-  thumb:     { width: 96, height: 128, backgroundColor: Colors.bgSubtle },
-  thumbSmall: { width: 64 },
+  card: {
+    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, flexDirection: 'row', overflow: 'hidden',
+    borderWidth: 1, borderColor: Colors.borderSubtle,
+  },
+  cardHover:  { borderColor: Colors.border, ...Shadow.card },
+  thumbs:     { flexDirection: 'row' },
+  thumb:      { width: 104, height: 138, backgroundColor: Colors.bgSubtle },
+  thumbInset: {
+    position: 'absolute', right: 6, bottom: 6, width: 36, height: 48, borderRadius: 6,
+    borderWidth: 2, borderColor: Colors.bgCard, backgroundColor: Colors.bgSubtle,
+  },
   thumbEmpty: { alignItems: 'center', justifyContent: 'center' },
-  thumbWm:   { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-30deg' }] },
-  thumbWmText: { ...Typography.label, color: 'rgba(255,255,255,0.28)', letterSpacing: 3, fontSize: 7 },
 
-  cardBody: { flex: 1, padding: Space.md, gap: 3, minWidth: 0 },
-  source:   { ...Typography.label, letterSpacing: 1, color: Colors.textFaint },
-  name:     { ...Typography.body, fontWeight: '500', fontSize: 14 },
-  date:     { ...Typography.caption, color: Colors.textFaint },
+  cardBody: { flex: 1, paddingVertical: Space.md, paddingHorizontal: Space.base, gap: 3, minWidth: 0, justifyContent: 'center' },
+  source:   { fontFamily: FONT_DISPLAY, fontSize: 15, lineHeight: 19, letterSpacing: 1.5, color: Colors.text },
+  name:     { ...Typography.bodySmall, ...Weight.medium, fontSize: 14 },
+  date:     { ...Typography.caption },
   pills:    { flexDirection: 'row', flexWrap: 'wrap', gap: Space.xs, marginTop: Space.xs },
-  pill:     { borderRadius: Radius.full, paddingHorizontal: Space.sm, paddingVertical: 3 },
-  pillText: { ...Typography.caption, color: '#FFF', fontWeight: '700' },
-  pillOutline:     { borderRadius: Radius.full, paddingHorizontal: Space.sm, paddingVertical: 3, borderWidth: 1, borderColor: Colors.border },
-  pillOutlineText: { ...Typography.caption, color: Colors.textMuted },
-
-  empty:      { alignItems: 'center', justifyContent: 'center', padding: 40, gap: Space.md },
-  emptyTitle: { ...Typography.h3 },
-  emptyHint:  { ...Typography.bodySmall, color: Colors.textMuted, textAlign: 'center', lineHeight: 22 },
 })
 
 const d = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: Space.base },
-  sheet:    { width: '100%', maxWidth: 960, maxHeight: '100%', flex: 1, backgroundColor: Colors.bg, borderRadius: Radius.xl, overflow: 'hidden' },
-  header:   { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingHorizontal: Space.lg, paddingVertical: Space.md, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle },
+  backdrop: { flex: 1, backgroundColor: Colors.scrim, alignItems: 'center', justifyContent: 'center', padding: Space.base },
+  sheet:    { width: '100%', maxWidth: 960, maxHeight: '100%', flex: 1, backgroundColor: Colors.bg, borderRadius: Radius.xl, overflow: 'hidden', ...Shadow.pop },
+  header:   { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingHorizontal: Space.lg, paddingVertical: Space.md, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle, backgroundColor: Colors.bgCard },
   title:    { ...Typography.h3, flex: 1 },
+  close:    { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bgSubtle },
   scroll:   { padding: Space.lg, paddingBottom: Space.xxl },
   layout:   { flexDirection: 'row', flexWrap: 'wrap', gap: Space.lg },
-  imageCol: { flexBasis: 300, flexGrow: 1, gap: Space.md },
-  infoCol:  { flexBasis: 280, flexGrow: 1, gap: Space.md },
+  imageCol: { flexBasis: 300, flexGrow: 1, gap: Space.base },
+  infoCol:  { flexBasis: 280, flexGrow: 1, gap: Space.base },
 
-  toggle:     { flexDirection: 'row', alignSelf: 'center', backgroundColor: Colors.bgSubtle, borderRadius: Radius.full, padding: 4 },
-  toggleBtn:  { paddingHorizontal: Space.lg, paddingVertical: 8, borderRadius: Radius.full },
-  toggleOn:   { backgroundColor: Colors.secondary },
-  toggleText: { ...Typography.bodySmall, color: Colors.text, fontWeight: '600' },
-  toggleTextOn: { color: Colors.textOnDark },
   image:  { width: '100%', aspectRatio: 3 / 4, borderRadius: Radius.lg, backgroundColor: Colors.bgSubtle },
-  badge:  {
-    position: 'absolute', top: Space.md, left: Space.md, ...Typography.label, fontSize: 9, color: Colors.textOnDark,
-    backgroundColor: 'rgba(66,61,58,0.85)', borderRadius: Radius.full, paddingHorizontal: Space.sm, paddingVertical: 4, overflow: 'hidden',
-  },
+  badge:  { position: 'absolute', top: Space.md, left: Space.md },
   btnRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm },
   flexBtn: { flexGrow: 1, flexBasis: 130 },
-  note:    { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
+  note:    { ...Typography.caption, textAlign: 'center' },
 
-  section: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: Space.base, gap: Space.xs },
-  label:   { ...Typography.label, color: Colors.textFaint },
-  body:    { ...Typography.bodySmall, color: Colors.text, lineHeight: 20 },
-  muted:   { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 20 },
-  link:    { ...Typography.bodySmall, color: Colors.secondary, fontWeight: '700', marginTop: Space.xs },
-  garmentThumb: { width: 72, height: 96, borderRadius: Radius.sm, backgroundColor: Colors.bgSubtle },
-  size:    { ...Typography.h1, fontSize: 36, lineHeight: 42 },
-  verdict: { borderWidth: 0 },
-  verdictCall: { ...Typography.h3 },
-  error:   { ...Typography.bodySmall, color: Colors.error },
-
-  dangerBox:  { backgroundColor: Colors.errorBg, borderRadius: Radius.md, padding: Space.base, gap: Space.sm },
-  deleteBtn:  { minHeight: 56, borderRadius: Radius.full, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
-  deleteText: { ...Typography.body, color: Colors.textOnDark, fontWeight: '600' },
-  deleteLink: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, paddingVertical: Space.sm },
+  label:   { ...Typography.label },
+  body:    { ...Typography.bodySmall, lineHeight: 21 },
+  bodyStrong: { ...Typography.body, ...Weight.semibold },
+  muted:   { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 21 },
+  garmentThumb: { width: 64, height: 86, borderRadius: Radius.sm, backgroundColor: Colors.bgSubtle },
+  size:    { ...Typography.numeral, fontSize: 48, lineHeight: 52 },
+  verdictLine: { ...Typography.h3, fontSize: 16, lineHeight: 24 },
 })

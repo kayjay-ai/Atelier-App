@@ -1,58 +1,42 @@
 import { useEffect, useState } from 'react'
 import { Redirect, router } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
-import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native'
+import { View, StyleSheet, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon, IconName, bottomTabOptions } from '../../lib/ui'
+import { Colors, Space, Layout } from '../../lib/theme'
+import { AppTabBar, CreditPill, Wordmark, tabScreenOptions, type TabItem } from '../../lib/ui'
 import { useAccountStore } from '../../lib/account'
 import { useMembershipStore, useProfileStore, isPremium, creditsLeft } from '../../lib/store'
 import { supabase } from '../../lib/supabaseClient'
 
 // ─── B2C consumer app shell (spec §3) ─────────────────────────────────────────
-// Tabs: Home · Style · Premium · History · Profile in a bottom bar on every
-// device (labels a little larger on iPad). The credit counter sits in the top
-// bar on every tab and opens Premium.
+// Tabs: Home · Style · Premium · History · Profile. Phones and portrait iPads:
+// the wordmark and credit counter on top, the tabs in the bottom bar. From
+// Layout.desktop the tabs join the wordmark in one top bar. The credit counter
+// is on every tab and opens Premium.
 
-const WIDE_BREAKPOINT = 768
-
-function TabIcon({ icon, active }: { icon: IconName; active: boolean }) {
-  if (active) {
-    return (
-      <View style={t.activePill}>
-        <Icon name={icon} size={18} color={Colors.textOnDark} />
-      </View>
-    )
-  }
-  return <Icon name={icon} size={22} color={Colors.primary} />
-}
+const TABS: TabItem[] = [
+  { name: 'index',   title: 'Home',    icon: 'tryOn' },
+  { name: 'style',   title: 'Style',   icon: 'style' },
+  { name: 'premium', title: 'Premium', icon: 'premium' },
+  { name: 'history', title: 'History', icon: 'history' },
+  { name: 'profile', title: 'Profile', icon: 'profile' },
+]
 
 function CreditCounter({ signedIn }: { signedIn: boolean }) {
   const membership = useMembershipStore((s) => s.membership)
   const premium = isPremium(membership)
   const balance = creditsLeft(membership) // null until loaded
 
-  if (!signedIn) {
-    return (
-      <TouchableOpacity style={h.pill} onPress={() => router.push('/auth')} accessibilityRole="button">
-        <Icon name="profile" size={14} color={Colors.secondary} />
-        <Text style={h.pillText}>Sign in</Text>
-      </TouchableOpacity>
-    )
-  }
+  if (!signedIn) return <CreditPill label="Sign in" onPress={() => router.push('/auth')} />
   const empty = !premium && balance !== null && balance <= 0
   return (
-    <TouchableOpacity
-      style={[h.pill, empty && h.pillEmpty]}
+    <CreditPill
+      empty={empty}
       onPress={() => router.navigate('/(tabs)/premium')}
-      accessibilityRole="button"
+      label={premium ? 'Unlimited' : balance === null ? 'Credits' : `${balance} credit${balance === 1 ? '' : 's'}`}
       accessibilityLabel={premium ? 'Unlimited credits. Open Premium.' : balance === null ? 'Credits. Open Premium.' : `${balance} credits left. Open Premium.`}
-    >
-      <Icon name="star" size={14} color={empty ? Colors.error : Colors.secondary} />
-      <Text style={[h.pillText, empty && { color: Colors.error }]}>
-        {premium ? 'Unlimited' : balance === null ? 'Credits' : `${balance} credit${balance === 1 ? '' : 's'}`}
-      </Text>
-    </TouchableOpacity>
+    />
   )
 }
 
@@ -60,10 +44,7 @@ function B2CHeader({ signedIn }: { signedIn: boolean }) {
   return (
     <SafeAreaView edges={['top']} style={h.safe}>
       <View style={h.row}>
-        <View style={{ flex: 1 }}>
-          <Text style={h.sub}>QUASAR'S</Text>
-          <Text style={h.mark}>ATELIER</Text>
-        </View>
+        <View style={{ flex: 1 }}><Wordmark size="sm" align="left" /></View>
         <CreditCounter signedIn={signedIn} />
       </View>
     </SafeAreaView>
@@ -104,43 +85,30 @@ export default function TabLayout() {
   if (userId === null) return <Redirect href="/auth" />
   if (userId === undefined) return <View style={{ flex: 1, backgroundColor: Colors.bg }} />
 
-  const wide = width >= WIDE_BREAKPOINT
-  const icon = (name: IconName) => ({ focused }: { focused: boolean }) => <TabIcon icon={name} active={focused} />
+  const desktop = width >= Layout.desktop
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <B2CHeader signedIn={!!userId} />
+      {!desktop && <B2CHeader signedIn={!!userId} />}
       <View style={{ flex: 1 }}>
-        <Tabs screenOptions={{ ...bottomTabOptions(wide, insets.bottom), tabBarLabelStyle: { ...Typography.label, fontSize: wide ? 11 : 9, letterSpacing: wide ? 1 : 1.5, marginTop: 4, color: undefined } }}>
-          <Tabs.Screen name="index"   options={{ title: 'Home',    tabBarIcon: icon('tryOn') }} />
-          <Tabs.Screen name="style"   options={{ title: 'Style',   tabBarIcon: icon('style') }} />
-          <Tabs.Screen name="premium" options={{ title: 'Premium', tabBarIcon: icon('premium') }} />
-          <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: icon('history') }} />
-          <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: icon('profile') }} />
+        <Tabs
+          screenOptions={tabScreenOptions(desktop)}
+          tabBar={(props) => (
+            <AppTabBar
+              {...props} items={TABS} desktop={desktop} insetBottom={insets.bottom}
+              brand={<Wordmark size="sm" align="left" />}
+              right={<CreditCounter signedIn={!!userId} />}
+            />
+          )}
+        >
+          {TABS.map((t) => <Tabs.Screen key={t.name} name={t.name} options={{ title: t.title }} />)}
         </Tabs>
       </View>
     </View>
   )
 }
 
-const t = StyleSheet.create({
-  // Exactly the tab bar's icon slot height (28) so it never runs into the label.
-  activePill: {
-    backgroundColor: Colors.secondary, borderRadius: 999, width: 52, height: 28,
-    alignItems: 'center', justifyContent: 'center',
-  },
-})
-
 const h = StyleSheet.create({
   safe: { backgroundColor: Colors.bg, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle },
   row:  { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingHorizontal: Space.lg, paddingVertical: Space.md },
-  sub:  { ...Typography.label, color: Colors.primary, letterSpacing: 4, fontSize: 9 },
-  mark: { ...Typography.h2, letterSpacing: 5, marginTop: -2 },
-  pill: {
-    flexDirection: 'row', alignItems: 'center', gap: Space.xs,
-    backgroundColor: Colors.primarySubtle, borderRadius: Radius.full,
-    paddingHorizontal: Space.md, paddingVertical: Space.sm,
-  },
-  pillEmpty: { backgroundColor: Colors.errorBg },
-  pillText:  { ...Typography.bodySmall, fontWeight: '600', color: Colors.secondary },
 })

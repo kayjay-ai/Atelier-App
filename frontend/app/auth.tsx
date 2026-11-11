@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react'
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  SafeAreaView, ScrollView, ActivityIndicator, Platform,
-} from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
 import { supabase } from '../lib/supabaseClient'
@@ -11,9 +8,11 @@ import { useAccountStore, homeFor, isCompanyLogin } from '../lib/account'
 import { fetchProfile, upsertProfile } from '../lib/supabaseStorage'
 import { fetchOwnerMe } from '../lib/api'
 import { takePrefill } from '../lib/owner'
-import { Colors, Typography, Space, Radius } from '../lib/theme'
+import { Colors, Typography, Space, Radius, Weight } from '../lib/theme'
+import { Field, Icon, Loading, Notice, PasswordField, PillButton, TextLink } from '../lib/ui'
 import { DateOfBirthField, parseDob, type DobValue } from '../components/DateOfBirthField'
 import { AccountKindSwitch } from '../components/AccountKindSwitch'
+import { AuthFrame } from '../components/AuthFrame'
 
 const EMPTY_DOB: DobValue = { day: '', month: '', year: '' }
 
@@ -267,230 +266,149 @@ export default function AuthScreen() {
     }
   }
 
-  if (checking) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.center}><ActivityIndicator color={Colors.primary} /></View>
-      </SafeAreaView>
-    )
-  }
+  if (checking) return <Loading />
 
-  const title = company ? 'Store sign-in.'
-    : mode === 'login' ? 'Welcome back.' : mode === 'signup' ? 'Create your account.' : 'Check your email.'
+  const title = company ? 'Store sign-in'
+    : mode === 'login' ? 'Welcome back' : mode === 'signup' ? 'Create your account' : 'Check your email'
   const subtitle = company
-    ? 'Sign in with your store login — the email your owner invited, or the one Atelier set up. This opens your store app.'
+    ? 'Use your store login: the email your owner invited, or the one Atelier set up. This opens your store app.'
     : mode === 'login'
       ? 'Sign in to see your fittings, style report and credits.'
       : mode === 'signup'
         ? 'New accounts start with 3 free try-ons.'
-        : 'Enter the code from the email to finish signing up. You can also tap the link in the email.'
+        : 'Enter the code from the email to finish signing up, or tap the link in it.'
+  const busy = loading || !!oauthLoading
 
   return (
-    <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        <View style={s.column}>
-
-          <View style={s.brand}>
-            <Text style={s.brandSub}>QUASAR'S</Text>
-            <Text style={s.brandMark}>ATELIER</Text>
+    <AuthFrame
+      audience={company ? 'company' : 'personal'}
+      title={title}
+      subtitle={subtitle}
+      top={mode !== 'verify' ? (
+        <AccountKindSwitch
+          value={company ? 'store' : 'personal'}
+          onChange={(role) => {
+            if (role === 'owner') { router.replace('/owner/login'); return }
+            switchKind(role === 'store' ? 'company' : 'personal')
+          }}
+          disabled={busy}
+        />
+      ) : undefined}
+    >
+      {mode !== 'verify' && (
+        <>
+          <View style={s.oauth}>
+            <PillButton
+              label="Continue with Google" icon="google" variant="outline" size="md"
+              onPress={() => signInWith('google')} loading={oauthLoading === 'google'} disabled={!!oauthLoading}
+            />
+            {showApple() && (
+              <TouchableOpacity
+                style={[s.appleBtn, !!oauthLoading && { opacity: 0.5 }]}
+                onPress={() => signInWith('apple')} disabled={!!oauthLoading}
+                accessibilityRole="button" accessibilityLabel="Sign in with Apple"
+              >
+                {oauthLoading === 'apple'
+                  ? <ActivityIndicator color="#FFFFFF" />
+                  : <><Icon name="apple" size={20} color="#FFFFFF" /><Text style={s.appleText}>Sign in with Apple</Text></>}
+              </TouchableOpacity>
+            )}
           </View>
 
-          {mode !== 'verify' && (
-            <AccountKindSwitch
-              value={company ? 'store' : 'personal'}
-              onChange={(role) => {
-                if (role === 'owner') { router.replace('/owner/login'); return }
-                switchKind(role === 'store' ? 'company' : 'personal')
-              }}
-              disabled={loading || !!oauthLoading}
-            />
-          )}
+          <View style={s.divRow}>
+            <View style={s.divLine} />
+            <Text style={s.divLabel}>or with email</Text>
+            <View style={s.divLine} />
+          </View>
 
-          <Text style={s.title}>{title}</Text>
-          <Text style={s.subtitle}>{subtitle}</Text>
+          <Field
+            label="Email" value={email} onChangeText={setEmail}
+            placeholder={company ? 'store@yourcompany.com' : 'you@example.com'}
+            keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email"
+            containerStyle={{ marginTop: 0 }}
+          />
+          <PasswordField
+            label="Password" value={password} onChangeText={setPassword}
+            placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'}
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            onSubmitEditing={submit}
+          />
 
-          {mode !== 'verify' && (
-            <>
-              <TouchableOpacity
-                style={[s.oauthBtn, !!oauthLoading && { opacity: 0.6 }]}
-                onPress={() => signInWith('google')}
-                disabled={!!oauthLoading}
-              >
-                {oauthLoading === 'google'
-                  ? <ActivityIndicator color={Colors.text} />
-                  : <><Text style={s.googleIcon}>G</Text><Text style={s.oauthText}>Continue with Google</Text></>}
-              </TouchableOpacity>
-
-              {showApple() && (
-                <TouchableOpacity
-                  style={[s.oauthBtn, s.appleBtn, !!oauthLoading && { opacity: 0.6 }]}
-                  onPress={() => signInWith('apple')}
-                  disabled={!!oauthLoading}
-                >
-                  {oauthLoading === 'apple'
-                    ? <ActivityIndicator color={Colors.textOnDark} />
-                    : <Text style={[s.oauthText, { color: Colors.textOnDark }]}> Sign in with Apple</Text>}
-                </TouchableOpacity>
-              )}
-
-              <View style={s.divRow}>
-                <View style={s.divLine} />
-                <Text style={s.divLabel}>or with email</Text>
-                <View style={s.divLine} />
-              </View>
-
-              <Text style={s.fieldLabel}>Email</Text>
-              <TextInput
-                style={s.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder={company ? 'store@yourcompany.com' : 'you@example.com'}
-                placeholderTextColor={Colors.textFaint}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="email"
-              />
-
-              <Text style={s.fieldLabel}>Password</Text>
-              <TextInput
-                style={s.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder={mode === 'signup' ? 'At least 8 characters' : '••••••••'}
-                placeholderTextColor={Colors.textFaint}
-                secureTextEntry
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                onSubmitEditing={submit}
-              />
-
-              {showDob && (
-                <View style={dobNeeded && s.dobNeeded}>
-                  <Text style={s.fieldLabel}>Date of birth</Text>
-                  <Text style={s.fieldHint}>
-                    {mode === 'signup' || dobNeeded
-                      ? 'Helps us tailor advice — some pieces are only meant for certain ages.'
-                      : 'Personal account — only needed once. Leave it blank if you’ve added it before.'}
-                  </Text>
-                  <DateOfBirthField value={dob} onChange={setDob} />
-                </View>
-              )}
-            </>
-          )}
-
-          {mode === 'verify' && (
-            <>
-              <Text style={s.fieldLabel}>Verification code</Text>
-              <TextInput
-                style={[s.input, s.codeInput]}
-                value={code}
-                onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 8))}
-                placeholder="123456"
-                placeholderTextColor={Colors.textFaint}
-                keyboardType="number-pad"
-                autoComplete="one-time-code"
-                textContentType="oneTimeCode"
-                onSubmitEditing={submit}
-              />
-              <TouchableOpacity style={s.linkRow} onPress={resendCode}>
-                <Text style={s.toggleLink}>Resend code</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {error && <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View>}
-          {info  && <View style={s.infoBox}><Text style={s.infoText}>{info}</Text></View>}
-
-          <TouchableOpacity
-            style={[s.submitBtn, (loading || (mode === 'verify' && code.length < 6)) && { opacity: 0.6 }]}
-            onPress={submit}
-            disabled={loading || (mode === 'verify' && code.length < 6)}
-          >
-            {loading
-              ? <ActivityIndicator color={Colors.textOnDark} />
-              : <Text style={s.submitText}>
-                  {mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Verify and continue'}
-                </Text>}
-          </TouchableOpacity>
-
-          {mode === 'verify' ? (
-            <TouchableOpacity style={s.toggleRow} onPress={() => switchMode('signup')}>
-              <Text style={s.toggleText}>Wrong email? <Text style={s.toggleLink}>Go back</Text></Text>
-            </TouchableOpacity>
-          ) : company ? (
-            <View style={s.toggleRow}>
-              <Text style={[s.toggleText, { textAlign: 'center' }]}>
-                No store login yet? Ask your owner to invite you from the owner portal, or contact Atelier support.
+          {showDob && (
+            <View style={[s.dob, dobNeeded && s.dobNeeded]}>
+              <Text style={Typography.fieldLabel}>
+                Date of birth{mode === 'login' && !dobNeeded ? <Text style={s.optional}>  Skip it if you’ve added it before</Text> : null}
               </Text>
+              {(mode === 'signup' || dobNeeded) && (
+                <Text style={s.fieldHint}>Helps us tailor advice — some pieces are only meant for certain ages.</Text>
+              )}
+              <DateOfBirthField value={dob} onChange={setDob} />
             </View>
-          ) : (
-            <TouchableOpacity style={s.toggleRow} onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
-              <Text style={s.toggleText}>
-                {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-                <Text style={s.toggleLink}>{mode === 'login' ? 'Sign up' : 'Sign in'}</Text>
-              </Text>
-            </TouchableOpacity>
           )}
+        </>
+      )}
 
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      {mode === 'verify' && (
+        <>
+          <Field
+            label="Verification code" value={code}
+            onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 8))}
+            placeholder="123456" keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode"
+            onSubmitEditing={submit} inputStyle={s.codeInput}
+          />
+          <TextLink label="Resend code" onPress={resendCode} style={{ alignSelf: 'flex-end', marginTop: Space.sm }} />
+        </>
+      )}
+
+      {error && <Notice tone="error" text={error} style={s.notice} />}
+      {info && <Notice tone="success" text={info} style={s.notice} />}
+
+      <PillButton
+        label={mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Verify and continue'}
+        onPress={submit} loading={loading} disabled={loading || (mode === 'verify' && code.length < 6)}
+        style={{ marginTop: Space.lg }}
+      />
+
+      <View style={s.footer}>
+        {mode === 'verify' ? (
+          <Text style={s.footerText}>Wrong email? <Text style={s.footerLink} onPress={() => switchMode('signup')} accessibilityRole="link">Go back</Text></Text>
+        ) : company ? (
+          <Text style={s.footerText}>
+            No store login yet? Ask your owner to invite you from the owner portal, or contact Atelier support.
+          </Text>
+        ) : (
+          <Text style={s.footerText}>
+            {mode === 'login' ? 'New to Atelier? ' : 'Already have an account? '}
+            <Text style={s.footerLink} onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')} accessibilityRole="link">
+              {mode === 'login' ? 'Create an account' : 'Sign in'}
+            </Text>
+          </Text>
+        )}
+      </View>
+    </AuthFrame>
   )
 }
 
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: Colors.bg },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scroll: { flexGrow: 1, padding: Space.lg, paddingTop: Space.xxl },
-  // Comfortable reading width on iPad / desktop; full width on phones.
-  column: { width: '100%', maxWidth: 440, alignSelf: 'center' },
-
-  brand:     { alignItems: 'center', marginBottom: Space.xl },
-  brandSub:  { ...Typography.label, color: Colors.primary, letterSpacing: 4, fontSize: 11 },
-  brandMark: { ...Typography.display, color: Colors.text, fontSize: 32, letterSpacing: 8, fontWeight: '300' },
-
-  title:    { ...Typography.h1, marginBottom: Space.sm },
-  subtitle: { ...Typography.bodySmall, color: Colors.textMuted, lineHeight: 22, marginBottom: Space.lg },
-
-  oauthBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: Space.sm, backgroundColor: Colors.bgCard, minHeight: 52,
-    borderRadius: Radius.full, borderWidth: 1.5, borderColor: Colors.secondary,
-    paddingVertical: 14, marginBottom: Space.md,
+  oauth: { gap: Space.sm, marginTop: Space.lg },
+  appleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Space.sm,
+    minHeight: 48, borderRadius: Radius.full, backgroundColor: '#000000',
   },
-  appleBtn:   { backgroundColor: '#000000', borderColor: '#000000' },
-  googleIcon: { fontSize: 16, fontWeight: '700', color: Colors.text, fontFamily: 'serif' },
-  oauthText:  { ...Typography.body, fontWeight: '500', color: Colors.text },
+  appleText: { ...Typography.button, color: '#FFFFFF' },
 
-  divRow:   { flexDirection: 'row', alignItems: 'center', gap: Space.md, marginVertical: Space.md },
+  divRow:   { flexDirection: 'row', alignItems: 'center', gap: Space.md, marginTop: Space.lg, marginBottom: Space.base },
   divLine:  { flex: 1, height: 1, backgroundColor: Colors.border },
-  divLabel: { ...Typography.caption, color: Colors.textFaint },
+  divLabel: { ...Typography.caption },
 
-  fieldLabel: { ...Typography.label, marginBottom: Space.xs, marginTop: Space.md },
-  input: {
-    backgroundColor: Colors.bgSubtle, borderRadius: Radius.md,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: Space.base, paddingVertical: 13,
-    ...Typography.body, color: Colors.text,
-  },
-  fieldHint: { ...Typography.caption, color: Colors.textFaint, marginTop: Space.xs, marginBottom: Space.xs },
-  dobNeeded: { borderLeftWidth: 3, borderLeftColor: Colors.secondary, paddingLeft: Space.md, marginTop: Space.sm },
-  codeInput: { fontSize: 22, letterSpacing: 6, textAlign: 'center' },
-  linkRow:   { alignSelf: 'flex-end', paddingVertical: Space.sm },
+  dob:       { marginTop: Space.base, gap: 6 },
+  dobNeeded: { borderLeftWidth: 3, borderLeftColor: Colors.secondary, paddingLeft: Space.md },
+  optional:  { ...Typography.caption },
+  fieldHint: { ...Typography.caption, marginBottom: Space.xs },
+  codeInput: { fontSize: 22, letterSpacing: 8, textAlign: 'center' },
 
-  errorBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.sm, padding: Space.md, marginTop: Space.md },
-  errorText: { ...Typography.bodySmall, color: Colors.error },
-  infoBox:  { backgroundColor: Colors.successBg, borderRadius: Radius.sm, padding: Space.md, marginTop: Space.md },
-  infoText: { ...Typography.bodySmall, color: Colors.success },
-
-  submitBtn: {
-    backgroundColor: Colors.secondary, borderRadius: Radius.full, minHeight: 52,
-    paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: Space.lg,
-  },
-  submitText: { ...Typography.body, fontWeight: '600', color: Colors.textOnDark },
-
-  toggleRow:  { paddingVertical: Space.lg, alignItems: 'center' },
-  toggleText: { ...Typography.bodySmall, color: Colors.textMuted },
-  toggleLink: { ...Typography.bodySmall, color: Colors.secondary, fontWeight: '600' },
-
+  notice: { marginTop: Space.base },
+  footer: { paddingVertical: Space.lg, alignItems: 'center' },
+  footerText: { ...Typography.bodySmall, color: Colors.textMuted, textAlign: 'center' },
+  footerLink: { ...Weight.semibold, color: Colors.secondary, textDecorationLine: 'underline' },
 })

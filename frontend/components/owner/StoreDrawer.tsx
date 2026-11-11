@@ -4,7 +4,7 @@ import {
 } from 'react-native'
 import { fetchOwnerStore, type OwnerStoreDetail } from '../../lib/api'
 import { copyText, fmtDate, inr, num, ownerErrorText, preActive, relativeTime } from '../../lib/owner'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
+import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
 import { Icon } from '../../lib/ui'
 import { Banner, Btn, Pill, Skeleton, StatusPill, toast } from './kit'
 import { storeActions } from './storeActions'
@@ -282,12 +282,12 @@ const d = StyleSheet.create({
   body: { padding: Space.lg, gap: Space.lg, paddingBottom: Space.xxl },
   name: { ...Typography.h2 },
   muted: { ...Typography.bodySmall, color: Colors.textMuted },
-  caption: { ...Typography.caption, color: Colors.textFaint },
+  caption: { ...Typography.caption, color: Colors.textMuted },
   label: { ...Typography.label },
   card: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Space.base, borderWidth: 1, borderColor: Colors.borderSubtle, gap: Space.sm },
   kv: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space.md },
   kvLabel: { ...Typography.bodySmall, color: Colors.textMuted },
-  kvValue: { ...Typography.bodySmall, fontWeight: '600', textAlign: 'right', flexShrink: 1 },
+  kvValue: { ...Typography.bodySmall, ...Weight.semibold, textAlign: 'right', flexShrink: 1 },
   mono: { fontFamily: Platform.select({ web: 'ui-monospace, Menlo, monospace', ios: 'Menlo', default: 'monospace' }), letterSpacing: 0.5 },
   copy: { flexDirection: 'row', alignItems: 'center', gap: Space.xs },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm },
@@ -295,7 +295,7 @@ const d = StyleSheet.create({
   sectionTitle: { ...Typography.h3 },
   device: { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.sm, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  deviceName: { ...Typography.bodySmall, fontWeight: '600' },
+  deviceName: { ...Typography.bodySmall, ...Weight.semibold },
   chart: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Space.base, borderWidth: 1, borderColor: Colors.borderSubtle, gap: Space.sm },
   chartHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   chartAxis: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -306,5 +306,5 @@ const d = StyleSheet.create({
   payHeadText: { ...Typography.label },
   payCell: { ...Typography.caption, color: Colors.text, paddingRight: Space.sm },
   payCellBox: { paddingRight: Space.sm },
-  link: { ...Typography.caption, color: Colors.secondary, fontWeight: '700', textDecorationLine: 'underline' },
+  link: { ...Typography.caption, color: Colors.secondary, ...Weight.semibold, textDecorationLine: 'underline' },
 })

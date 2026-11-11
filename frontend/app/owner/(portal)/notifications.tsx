@@ -9,8 +9,8 @@ import {
   type OwnerNotification, type OwnerNotificationCategory,
 } from '../../../lib/api'
 import { CATEGORY_META, fmtDate, fmtDateTime, inr, ownerErrorText, relativeTime, useOwnerStore } from '../../../lib/owner'
-import { Colors, Typography, Space, Radius } from '../../../lib/theme'
-import { Icon } from '../../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight } from '../../../lib/theme'
+import { Icon, Title } from '../../../lib/ui'
 import { Banner, Btn, Chip, RowMenu, Skeleton, toast, WIDE } from '../../../components/owner/kit'
 
 // ─── Notifications: one feed of everything across the owner's stores ──────────
@@ -192,6 +192,7 @@ export default function OwnerNotifications() {
     const meta = CATEGORY_META[n.category]
     const special = n.category === 'deals' || n.category === 'gift_cards'
     const menu = [
+      { label: 'Open', icon: 'arrowRight' as const, onPress: () => open(n) },
       { label: n.read ? 'Mark as unread' : 'Mark as read', icon: 'check' as const, onPress: () => setRead(n, !n.read) },
       { label: 'Delete', icon: 'trash' as const, danger: true, onPress: () => remove(n) },
     ]
@@ -202,8 +203,8 @@ export default function OwnerNotifications() {
           { label: 'Delete', danger: true, onPress: () => remove(n) },
         ]}>
           <TouchableOpacity
-            style={[x.item, special && x.special, !n.read && x.unread]} onPress={() => open(n)}
-            accessibilityRole="button" accessibilityLabel={`${n.read ? '' : 'Unread. '}${meta.label}. ${n.body}`}
+            style={[x.item, special && x.special, !n.read && x.unread]} onPress={() => open(n)} focusable={false}
+            accessibilityLabel={`${n.read ? '' : 'Unread. '}${meta.label}. ${n.body}`}
           >
             <View style={[x.dot, { opacity: n.read ? 0 : 1 }]} />
             <View style={[x.icon, special && { backgroundColor: Colors.secondary }]}>
@@ -234,7 +235,7 @@ export default function OwnerNotifications() {
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <View style={[x.head, wide && x.headWide]}>
         <View style={x.titleRow}>
-          <Text style={x.title} accessibilityRole="header">Notifications</Text>
+          <Title>Notifications</Title>
           <Btn small kind="secondary" icon="check" label="Mark all as read" onPress={readAll} disabled={!items?.some((i) => !i.read)} />
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: Space.sm }}>
@@ -300,33 +301,33 @@ export default function OwnerNotifications() {
 
 const x = StyleSheet.create({
   head: { padding: Space.base, paddingTop: Space.lg, gap: Space.md },
-  headWide: { paddingHorizontal: Space.xl, maxWidth: 900, width: '100%' },
+  headWide: { paddingHorizontal: Space.xl, maxWidth: 900 + 64, width: '100%', alignSelf: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Space.md, flexWrap: 'wrap' },
   title: { ...Typography.h1 },
   list: { paddingHorizontal: Space.base, paddingBottom: Space.xxl },
-  listWide: { paddingHorizontal: Space.xl, maxWidth: 900, width: '100%' },
+  listWide: { paddingHorizontal: Space.xl, maxWidth: 900 + 64, width: '100%', alignSelf: 'center' },
   group: { ...Typography.label, marginTop: Space.base, marginBottom: Space.sm },
   item: {
     flexDirection: 'row', alignItems: 'flex-start', gap: Space.md, padding: Space.md,
-    backgroundColor: Colors.bgCard, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.borderSubtle,
   },
   unread: { borderColor: Colors.primaryLight },
   special: { backgroundColor: Colors.primarySubtle, borderColor: Colors.primary },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.error, marginTop: 14, marginLeft: -4 },
   icon: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bgSubtle, alignItems: 'center', justifyContent: 'center' },
   body: { ...Typography.bodySmall, lineHeight: 20 },
-  bold: { fontWeight: '700' },
+  bold: { ...Weight.semibold },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   cat: { ...Typography.caption, color: Colors.textMuted },
-  when: { ...Typography.caption, color: Colors.textFaint },
+  when: { ...Typography.caption, color: Colors.textMuted },
   specialFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Space.sm, marginTop: Space.sm, flexWrap: 'wrap' },
-  expiry: { ...Typography.caption, color: Colors.warning, fontWeight: '700' },
+  expiry: { ...Typography.caption, color: Colors.warning, ...Weight.semibold },
   swipeActions: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row', justifyContent: 'flex-end' },
   swipeBtn: { width: 84, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.secondary },
-  swipeText: { ...Typography.caption, color: Colors.textOnDark, fontWeight: '700' },
+  swipeText: { ...Typography.caption, color: Colors.textOnDark, ...Weight.semibold },
   empty: { alignItems: 'center', gap: Space.md, padding: Space.xxl },
   emptyText: { ...Typography.body, color: Colors.textMuted, textAlign: 'center', maxWidth: 360 },
-  scrim: { flex: 1, backgroundColor: 'rgba(42,39,37,0.45)', alignItems: 'center', justifyContent: 'center', padding: Space.base },
+  scrim: { flex: 1, backgroundColor: Colors.scrim, alignItems: 'center', justifyContent: 'center', padding: Space.base },
   dialog: { width: '100%', maxWidth: 420, backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Space.lg, gap: Space.sm },
   dialogTitle: { ...Typography.h2 },
   big: { ...Typography.h1 },

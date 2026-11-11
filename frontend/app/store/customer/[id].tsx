@@ -1,7 +1,5 @@
 import { useCallback, useState } from 'react'
-import {
-  View, Text, TouchableOpacity, ScrollView, Image, StyleSheet, ActivityIndicator, Platform,
-} from 'react-native'
+import { View, Text, TouchableOpacity, Image, StyleSheet, Platform } from 'react-native'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useAccountStore } from '../../../lib/account'
 import {
@@ -10,8 +8,11 @@ import {
 } from '../../../lib/b2b'
 import { pickImageDataUri } from '../../../lib/imageInput'
 import { downloadImage, shareImage } from '../../../lib/shareImage'
-import { Colors, Typography, Space, Radius } from '../../../lib/theme'
-import { Icon, PillButton } from '../../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight } from '../../../lib/theme'
+import {
+  Card, EmptyState, Icon, Initials, Loading, Notice, Page, PillButton, SectionHeader, Tag, TextLink, Title,
+  confirmDialog, toast, type IconName,
+} from '../../../lib/ui'
 import {
   MeasurementsFields, emptyMeasurementValues, parseMeasurements, type MeasurementValues,
 } from '../../../components/store/MeasurementsFields'
@@ -59,14 +60,17 @@ export default function CustomerFolderScreen() {
 
   if (account?.type !== 'b2b_company') return null
 
-  if (loading) return <View style={s.center}><ActivityIndicator color={Colors.primary} /></View>
+  if (loading) return <Loading label="Opening the folder…" />
   if (error || !folder) {
     return (
-      <View style={s.center}>
-        <Text style={s.emptyTitle}>{error ? "Couldn't load this folder" : 'Folder not found'}</Text>
-        <Text style={s.muted}>{error ?? 'It may no longer be available — folders are kept for 15 days.'}</Text>
-        <PillButton variant="secondary" label="Back to customers" onPress={() => router.navigate('/store/customers')} style={{ marginTop: Space.md }} />
-      </View>
+      <Page width="reading">
+        <EmptyState
+          icon={error ? 'alert' : 'clock'}
+          title={error ? 'Couldn’t load this folder' : 'This folder is no longer here'}
+          body={error ?? 'Folders are kept for 15 days, then removed with their photos.'}
+          action={{ label: 'Back to customers', onPress: () => router.navigate('/store/customers') }}
+        />
+      </Page>
     )
   }
 
@@ -119,7 +123,6 @@ export default function CustomerFolderScreen() {
       router.navigate('/store/customers')
     } catch (e: any) {
       setNotice(`Couldn't delete this customer — ${e?.message ?? 'please try again'}.`)
-      setConfirmDelete(false)
     } finally {
       setBusy(null)
     }
@@ -143,196 +146,179 @@ export default function CustomerFolderScreen() {
   // No measurements yet → the fields are simply open; "Edit" only for saved ones.
   const showFields = editing || !m
 
+  async function askDeleteCustomer() {
+    const ok = await confirmDialog({
+      title: `Delete ${folder!.customerName}?`,
+      body: `Their photo, measurements and all ${results.length} result${results.length === 1 ? '' : 's'} are removed permanently. This can’t be undone.`,
+      confirmLabel: 'Delete customer', danger: true,
+    })
+    if (ok) removeCustomer()
+  }
+
+  async function askHideResult(r: CustomerTryOn) {
+    const ok = await confirmDialog({
+      title: `Delete this ${r.resultUrl ? 'try-on' : 'size check'}?`,
+      body: 'It’s removed from this device. The saved copy stays in your store’s records.',
+      confirmLabel: 'Delete', danger: true,
+    })
+    if (ok) { hideResult(folder!.id, r.id); toast('Deleted from this device.') }
+  }
+
   return (
-    <ScrollView contentContainerStyle={s.scroll}>
-      <TouchableOpacity style={s.back} onPress={() => router.navigate('/store/customers')}>
-        <Icon name="back" size={18} color={Colors.textMuted} />
-        <Text style={s.backText}>Customers</Text>
-      </TouchableOpacity>
+    <Page width="app">
+      <TextLink label="Customers" icon="back" tone="muted" onPress={() => router.navigate('/store/customers')} style={{ alignSelf: 'flex-start' }} />
 
       <View style={s.top}>
         <View style={s.photoCol}>
           {folder.photoUrl
-            ? <Image source={{ uri: folder.photoUrl }} style={s.photo} resizeMode="cover" />
-            : <View style={[s.photo, s.photoEmpty]}><Icon name="profile" size={40} color={Colors.textFaint} /><Text style={s.muted}>No photo yet</Text></View>}
+            ? <Image source={{ uri: folder.photoUrl }} style={s.photo} resizeMode="cover" accessibilityLabel={`Photo of ${folder.customerName}`} />
+            : <View style={[s.photo, s.photoEmpty]}><Initials name={folder.customerName} size={56} /><Text style={s.muted}>No photo yet</Text></View>}
           <View style={s.row}>
-            <PillButton variant="secondary" label={folder.photoUrl ? 'Retake' : 'Take photo'} icon="takePhoto"
-              onPress={() => changePhoto('camera')} loading={busy === 'photo'} style={{ flex: 1 }} />
-            <PillButton variant="outline" label="Gallery" icon="gallery"
-              onPress={() => changePhoto('library')} disabled={busy === 'photo'} style={{ flex: 1 }} />
+            <PillButton label={folder.photoUrl ? 'Retake' : 'Take photo'} icon="takePhoto" size="md"
+              onPress={() => changePhoto('camera')} loading={busy === 'photo'} style={s.flex} />
+            <PillButton variant="outline" label="Gallery" icon="gallery" size="md"
+              onPress={() => changePhoto('library')} disabled={busy === 'photo'} style={s.flex} />
           </View>
         </View>
 
         <View style={s.infoCol}>
-          <Text style={s.title}>{folder.customerName}</Text>
-          {folder.phone && <Text style={s.muted}>{maskPhone(folder.phone)}</Text>}
-          <Text style={s.muted}>
-            Created {new Date(folder.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </Text>
-          <View style={[s.expiry, soon && s.expirySoon]}>
-            <Text style={[s.expiryText, soon && { color: Colors.warning }]}>
-              {availabilityLabel(folder.expiresAt)}
-            </Text>
+          <View style={{ gap: Space.sm }}>
+            <Title size="h1">{folder.customerName}</Title>
+            <View style={s.metaRow}>
+              <Tag label={availabilityLabel(folder.expiresAt)} tone={soon ? 'warning' : 'neutral'} dot={soon} />
+              <Text style={s.muted}>
+                Added {new Date(folder.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
+                {folder.phone ? ` · ${maskPhone(folder.phone)}` : ''}
+              </Text>
+            </View>
           </View>
 
-          <View style={s.section}>
+          <Card>
             <View style={s.sectionHead}>
-              <Text style={s.label}>MEASUREMENTS</Text>
-              {!showFields && (
-                <TouchableOpacity onPress={() => setEditing(true)}>
-                  <Text style={s.link}>Edit</Text>
-                </TouchableOpacity>
-              )}
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={s.cardTitle}>Measurements</Text>
+                {!m && <Text style={s.muted}>Needed for Size Assist.</Text>}
+              </View>
+              {!showFields && <TextLink label="Edit" icon="edit" onPress={() => setEditing(true)} />}
             </View>
             {showFields ? (
-              <View style={{ gap: Space.md }}>
-                {!m && <Text style={s.muted}>Needed for Size Assist.</Text>}
+              <View style={{ gap: Space.base }}>
                 <MeasurementsFields value={meas} onChange={setMeas} />
-                <View style={s.row}>
+                <View style={[s.row, { justifyContent: 'flex-end' }]}>
                   {m && (
-                    <PillButton variant="outline" label="Cancel" onPress={() => { setEditing(false); setMeas(emptyMeasurementValues(m)) }} style={{ flex: 1 }} />
+                    <PillButton variant="ghost" label="Cancel" size="md" onPress={() => { setEditing(false); setMeas(emptyMeasurementValues(m)) }} />
                   )}
-                  <PillButton variant="secondary" label="Save measurements" onPress={saveMeasurements} loading={busy === 'meas'} style={{ flex: 1 }} />
+                  <PillButton label="Save measurements" size="md" onPress={saveMeasurements} loading={busy === 'meas'} />
                 </View>
               </View>
             ) : m && (
-              <Text style={s.body}>
-                {m.heightCm} cm · {m.weightKg} kg · chest {m.chestIn}" · waist {m.waistIn}" · hip {m.hipIn}" · {m.fitPreference} fit
-              </Text>
+              <View style={s.measGrid}>
+                {([['Height', `${m.heightCm} cm`], ['Weight', `${m.weightKg} kg`], ['Chest', `${m.chestIn} in`], ['Waist', `${m.waistIn} in`], ['Hip', `${m.hipIn} in`], ['Fit', m.fitPreference.charAt(0).toUpperCase() + m.fitPreference.slice(1)]] as const).map(([k, v]) => (
+                  <View key={k} style={s.measItem}>
+                    <Text style={s.measValue}>{v}</Text>
+                    <Text style={s.measLabel}>{k}</Text>
+                  </View>
+                ))}
+              </View>
             )}
-          </View>
+          </Card>
         </View>
       </View>
 
-      {notice && <View style={s.errorBox}><Text style={s.errorText}>{notice}</Text></View>}
+      {notice && <Notice tone="error" text={notice} onClose={() => setNotice(null)} />}
 
-      <View style={s.sectionHead}>
-        <Text style={s.label}>RESULTS ({results.length})</Text>
-        {Platform.OS === 'web' && images.length > 1 && (
-          <TouchableOpacity onPress={downloadAll}><Text style={s.link}>Download all</Text></TouchableOpacity>
+      <View style={{ gap: Space.base }}>
+        <SectionHeader
+          title={`Results (${results.length})`}
+          action={Platform.OS === 'web' && images.length > 1 ? { label: 'Download all', onPress: downloadAll } : undefined}
+        />
+        {results.length === 0 ? (
+          <Card variant="sunken"><Text style={s.muted}>No try-ons yet. Upload a garment on Home and tap Try It On.</Text></Card>
+        ) : (
+          <View style={s.grid}>
+            {results.map((r) => (
+              <View key={r.id} style={s.result}>
+                <Image source={{ uri: r.resultUrl ?? r.garmentUrl ?? '' }} style={s.resultImg} resizeMode="cover" />
+                {!r.resultUrl && <View style={s.resultBadge}><Tag label="Size check" tone="dark" /></View>}
+                <View style={s.resultBody}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: Space.sm }}>
+                    <Text style={[s.body, { flex: 1 }]} numberOfLines={1}>{r.garmentName || (r.resultUrl ? 'Try-on' : 'Size check')}</Text>
+                    {r.sizeResult && <Tag label={`Size ${r.sizeResult.size}`} tone="info" />}
+                  </View>
+                  <Text style={s.caption}>{new Date(r.createdAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
+                  <View style={s.resultActions}>
+                    {r.resultUrl && (
+                      <>
+                        <IconButton icon="share" label="Share"
+                          onPress={() => shareImage(r.resultUrl!, fileFor(r), `${folder.customerName} — Atelier try-on`).then(() => reportShared(folder.id, 'share')).catch((e) => setNotice(e?.message ?? 'Could not share.'))} />
+                        <IconButton icon="download" label="Download"
+                          onPress={() => downloadImage(r.resultUrl!, fileFor(r)).then(() => reportShared(folder.id, 'download')).catch((e) => setNotice(e?.message ?? 'Could not download.'))} />
+                      </>
+                    )}
+                    <View style={{ flex: 1 }} />
+                    <IconButton icon="trash" label="Delete" danger onPress={() => askHideResult(r)} />
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
         )}
       </View>
-
-      {results.length === 0 ? (
-        <Text style={s.muted}>No try-ons yet — upload a garment on Home and tap Try on.</Text>
-      ) : (
-        <View style={s.grid}>
-          {results.map((r) => (
-            <View key={r.id} style={s.result}>
-              <Image source={{ uri: r.resultUrl ?? r.garmentUrl ?? '' }} style={s.resultImg} resizeMode="cover" />
-              <View style={{ padding: Space.md, gap: Space.xs }}>
-                <Text style={s.body} numberOfLines={1}>{r.garmentName || (r.resultUrl ? 'Try-on' : 'Size check')}</Text>
-                {r.sizeResult && <Text style={s.size}>Size {r.sizeResult.size}</Text>}
-                <Text style={s.muted}>{new Date(r.createdAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
-                {r.resultUrl && (
-                  <View style={s.row}>
-                    <TouchableOpacity style={s.smallBtn}
-                      onPress={() => shareImage(r.resultUrl!, fileFor(r), `${folder.customerName} — Atelier try-on`).then(() => reportShared(folder.id, 'share')).catch((e) => setNotice(e?.message ?? 'Could not share.'))}>
-                      <Icon name="share" size={16} color={Colors.text} /><Text style={s.smallBtnText}>Share</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={s.smallBtn}
-                      onPress={() => downloadImage(r.resultUrl!, fileFor(r)).then(() => reportShared(folder.id, 'download')).catch((e) => setNotice(e?.message ?? 'Could not download.'))}>
-                      <Icon name="download" size={16} color={Colors.text} /><Text style={s.smallBtnText}>Download</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {confirmResultId === r.id ? (
-                  <View style={s.resultConfirm}>
-                    <Text style={s.muted}>Delete this {r.resultUrl ? 'try-on' : 'size check'} from this device? The saved copy stays in your store's records.</Text>
-                    <View style={s.row}>
-                      <TouchableOpacity style={[s.smallBtn, s.confirmBtn]} onPress={() => setConfirmResultId(null)}>
-                        <Text style={s.smallBtnText}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[s.smallBtn, s.confirmBtn, s.smallDeleteBtn]} onPress={() => { hideResult(folder.id, r.id); setConfirmResultId(null) }}>
-                        <Text style={[s.smallBtnText, { color: Colors.textOnDark }]}>Delete</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <TouchableOpacity style={s.resultDelete} onPress={() => setConfirmResultId(r.id)}>
-                    <Icon name="trash" size={16} color={Colors.error} />
-                    <Text style={[s.smallBtnText, { color: Colors.error }]}>Delete</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
 
       <View style={s.danger}>
-        {confirmDelete ? (
-          <>
-            <Text style={s.body}>Delete {folder.customerName}?</Text>
-            <Text style={s.muted}>
-              Their photo, measurements and all {results.length} result{results.length === 1 ? '' : 's'} will be removed permanently. This can't be undone.
-            </Text>
-            <View style={s.row}>
-              <PillButton variant="outline" label="Cancel" onPress={() => setConfirmDelete(false)} disabled={busy === 'delete'} style={{ flex: 1 }} />
-              <TouchableOpacity style={[s.deleteBtn, busy === 'delete' && { opacity: 0.6 }]} onPress={removeCustomer} disabled={busy === 'delete'}>
-                {busy === 'delete'
-                  ? <ActivityIndicator color={Colors.textOnDark} />
-                  : <Text style={s.deleteBtnText}>Delete customer</Text>}
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-          <TouchableOpacity style={s.deleteLink} onPress={() => setConfirmDelete(true)}>
-            <Icon name="trash" size={18} color={Colors.error} />
-            <Text style={s.deleteLinkText}>Delete customer</Text>
-          </TouchableOpacity>
-        )}
+        <View style={{ flex: 1, minWidth: 220, gap: 2 }}>
+          <Text style={s.cardTitle}>Delete this customer</Text>
+          <Text style={s.muted}>Removes their photo, measurements and every result now, before the 15 days are up.</Text>
+        </View>
+        <PillButton label="Delete customer" icon="trash" variant="danger" size="md" onPress={askDeleteCustomer} loading={busy === 'delete'} />
       </View>
-    </ScrollView>
+    </Page>
+  )
+}
+
+/** A small round action on a result card. */
+function IconButton({ icon, label, onPress, danger }: { icon: IconName; label: string; onPress: () => void; danger?: boolean }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={[s.iconBtn, danger && s.iconBtnDanger]} accessibilityRole="button" accessibilityLabel={label} hitSlop={4}>
+      <Icon name={icon} size={17} color={danger ? Colors.error : Colors.secondary} />
+    </TouchableOpacity>
   )
 }
 
 const s = StyleSheet.create({
-  scroll: { padding: Space.lg, paddingBottom: Space.xxl, gap: Space.lg, maxWidth: 960, width: '100%', alignSelf: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Space.lg, gap: Space.sm, backgroundColor: Colors.bg },
-  back: { flexDirection: 'row', alignItems: 'center', gap: Space.xs },
-  backText: { ...Typography.bodySmall, color: Colors.textMuted },
-  top: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.lg },
-  photoCol: { flexBasis: 260, flexGrow: 1, maxWidth: 360, gap: Space.md },
+  top: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.xl },
+  photoCol: { flexBasis: 280, flexGrow: 1, maxWidth: 380, gap: Space.md },
   photo: { width: '100%', aspectRatio: 3 / 4, borderRadius: Radius.xl, backgroundColor: Colors.bgSubtle },
   photoEmpty: { alignItems: 'center', justifyContent: 'center', gap: Space.sm },
-  infoCol: { flexBasis: 300, flexGrow: 2, gap: Space.sm },
-  title: { ...Typography.h1 },
-  body: { ...Typography.body },
+  infoCol: { flexBasis: 320, flexGrow: 2, gap: Space.lg },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Space.sm },
+  cardTitle: { ...Typography.h3 },
+  body: { ...Typography.bodySmall, ...Weight.medium },
   muted: { ...Typography.bodySmall, color: Colors.textMuted },
-  expiry: { alignSelf: 'flex-start', backgroundColor: Colors.bgSubtle, borderRadius: Radius.full, paddingHorizontal: Space.md, paddingVertical: 6 },
-  expirySoon: { backgroundColor: Colors.warningBg },
-  expiryText: { ...Typography.caption, color: Colors.textMuted, fontWeight: '600' },
-  section: { marginTop: Space.md, gap: Space.sm },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { ...Typography.label },
-  link: { ...Typography.bodySmall, fontWeight: '700', color: Colors.secondary },
-  row: { flexDirection: 'row', gap: Space.sm },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
+  caption: { ...Typography.caption },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: Space.md },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm },
+  flex: { flexGrow: 1, flexBasis: 140 },
+
+  measGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm },
+  measItem: { flexBasis: 96, flexGrow: 1, backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, padding: Space.md, gap: 2 },
+  measValue: { ...Typography.h3, fontSize: 16 },
+  measLabel: { ...Typography.caption },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.base },
   result: {
-    flexBasis: 220, flexGrow: 1, maxWidth: 300, backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
+    flexBasis: 210, flexGrow: 1, maxWidth: 320, backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.borderSubtle, overflow: 'hidden',
   },
   resultImg: { width: '100%', aspectRatio: 3 / 4, backgroundColor: Colors.bgSubtle },
-  size: { ...Typography.bodySmall, fontWeight: '700', color: Colors.secondary },
-  smallBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: Radius.full, paddingHorizontal: Space.md, paddingVertical: 6,
+  resultBadge: { position: 'absolute', top: Space.sm, left: Space.sm },
+  resultBody: { padding: Space.md, gap: Space.xs },
+  resultActions: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, marginTop: Space.xs },
+  iconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bgSubtle },
+  iconBtnDanger: { backgroundColor: Colors.errorBg },
+
+  danger: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Space.base,
+    borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Space.lg, marginTop: Space.sm,
   },
-  smallBtnText: { ...Typography.caption, color: Colors.text, fontWeight: '600' },
-  resultDelete: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 6 },
-  resultConfirm: { gap: Space.sm, paddingTop: Space.xs },
-  confirmBtn: { flex: 1, justifyContent: 'center', minHeight: 36 },
-  smallDeleteBtn: { backgroundColor: Colors.error, borderColor: Colors.error },
-  emptyTitle: { ...Typography.h3 },
-  errorBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.sm, padding: Space.md },
-  errorText: { ...Typography.bodySmall, color: Colors.error },
-  danger: { borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Space.lg, gap: Space.sm },
-  deleteLink: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, alignSelf: 'flex-start' },
-  deleteLinkText: { ...Typography.body, fontWeight: '600', color: Colors.error },
-  deleteBtn: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44,
-    backgroundColor: Colors.error, borderRadius: Radius.full, paddingHorizontal: Space.lg,
-  },
-  deleteBtnText: { ...Typography.body, fontWeight: '600', color: Colors.textOnDark },
 })

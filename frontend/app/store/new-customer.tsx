@@ -1,13 +1,11 @@
 import { useCallback, useState } from 'react'
-import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, ActivityIndicator,
-} from 'react-native'
+import { View, Text, Image, StyleSheet } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
 import { useAccountStore } from '../../lib/account'
 import { createFolder, saveFolderPhoto, useStoreSession, FOLDER_LIFETIME_DAYS } from '../../lib/b2b'
 import { pickImageDataUri } from '../../lib/imageInput'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon, PillButton } from '../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
+import { Card, Checkbox, Field, Icon, Notice, Page, PageHeader, PillButton } from '../../lib/ui'
 import {
   MeasurementsFields, emptyMeasurementValues, parseMeasurements, type MeasurementValues,
 } from '../../components/store/MeasurementsFields'
@@ -101,138 +99,123 @@ export default function NewCustomerScreen() {
     }
   }
 
+  const stepper = (step: 1 | 2) => (
+    <View style={s.stepper} accessibilityLabel={`Step ${step} of 2`}>
+      {(['Their details', 'Their photo'] as const).map((label, i) => (
+        <View key={label} style={s.stepItem}>
+          <View style={[s.stepBar, i < step && s.stepBarOn]} />
+          <Text style={[s.stepLabel, i + 1 === step && s.stepLabelOn]}>{`${i + 1}. ${label}`}</Text>
+        </View>
+      ))}
+    </View>
+  )
+
   // ── Step 2: photograph the customer ──
   if (folder) {
     return (
-      <ScrollView contentContainerStyle={s.scroll}>
-        <Text style={s.eyebrow}>STEP 2 OF 2</Text>
-        <Text style={s.title}>Photograph {folder.customerName}</Text>
+      <Page width="reading">
+        {stepper(2)}
+        <PageHeader title={`Photograph ${folder.customerName}`} subtitle="This photo is used for every try-on in their folder." />
 
         {photo ? (
           <View style={s.previewWrap}>
-            <Image source={{ uri: photo }} style={s.preview} resizeMode="contain" />
+            <Image source={{ uri: photo }} style={s.preview} resizeMode="contain" accessibilityLabel={`Photo of ${folder.customerName}`} />
           </View>
         ) : (
           <View style={s.guide}>
-            <Icon name="profile" size={64} color={Colors.primaryLight} />
+            <View style={s.guideIcon}><Icon name="takePhoto" size={30} color={Colors.secondary} /></View>
             {FRAMING_TIPS.map((t) => (
-              <Text key={t} style={s.tip}>✓  {t}</Text>
+              <View key={t} style={s.tipRow}>
+                <Icon name="check" size={16} color={Colors.primaryDark} />
+                <Text style={s.tip}>{t}</Text>
+              </View>
             ))}
           </View>
         )}
 
-        {error && <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View>}
+        {error && <Notice tone="error" text={error} />}
 
         {photo ? (
           <View style={s.row}>
-            <PillButton variant="outline" label="Retake" icon="refresh" onPress={() => setPhoto(null)} style={{ flex: 1 }} disabled={busy} />
-            <PillButton variant="secondary" label="Save photo" icon="check" onPress={savePhoto} loading={busy} style={{ flex: 1 }} />
+            <PillButton variant="outline" label="Retake" icon="refresh" onPress={() => setPhoto(null)} style={s.flex} disabled={busy} />
+            <PillButton label="Save photo" icon="check" onPress={savePhoto} loading={busy} style={s.flex} />
           </View>
         ) : (
           <View style={s.row}>
-            <PillButton variant="secondary" label="Take photo" icon="takePhoto" onPress={() => capture('camera')} style={{ flex: 1 }} />
-            <PillButton variant="outline" label="From gallery" icon="gallery" onPress={() => capture('library')} style={{ flex: 1 }} />
+            <PillButton label="Take photo" icon="takePhoto" onPress={() => capture('camera')} style={s.flex} />
+            <PillButton variant="outline" label="From gallery" icon="gallery" onPress={() => capture('library')} style={s.flex} />
           </View>
         )}
 
-        <TouchableOpacity style={s.skip} onPress={() => router.replace('/store')} disabled={busy}>
-          <Text style={s.skipText}>Skip — add the photo later from the folder</Text>
-        </TouchableOpacity>
-      </ScrollView>
+        <PillButton variant="ghost" size="sm" label="Skip — add the photo later from the folder" onPress={() => router.replace('/store')} disabled={busy} style={{ alignSelf: 'center' }} />
+      </Page>
     )
   }
 
   // ── Step 1: folder details ──
   return (
-    <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-      <TouchableOpacity style={s.back} onPress={() => router.navigate('/store')}>
-        <Icon name="back" size={18} color={Colors.textMuted} />
-        <Text style={s.backText}>Home</Text>
-      </TouchableOpacity>
-      <Text style={s.eyebrow}>STEP 1 OF 2</Text>
-      <Text style={s.title}>New customer</Text>
+    <Page width="reading">
+      {stepper(1)}
+      <PageHeader title="New Customer" back={{ label: 'Home', onPress: () => router.navigate('/store') }}
+        subtitle="Their folder keeps their photo and every try-on for 15 days." />
 
-      <Text style={s.label}>CUSTOMER NAME *</Text>
-      <TextInput
-        style={s.input}
-        value={name}
-        onChangeText={setName}
-        placeholder="e.g. Priya Sharma"
-        placeholderTextColor={Colors.textFaint}
-        autoCapitalize="words"
-      />
-
-      <Text style={s.label}>PHONE (OPTIONAL — FOR SHARING PHOTOS)</Text>
-      <TextInput
-        style={s.input}
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="+91 98765 43210"
-        placeholderTextColor={Colors.textFaint}
-        keyboardType="phone-pad"
-      />
-
-      <TouchableOpacity
-        style={s.consentRow}
-        onPress={() => setConsent((c) => !c)}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: consent }}
-      >
-        <View style={[s.checkbox, consent && s.checkboxOn]}>
-          {consent && <Icon name="check" size={16} color={Colors.textOnDark} />}
+      <Card>
+        <Field
+          label="Customer name" value={name} onChangeText={setName}
+          placeholder="e.g. Priya Sharma" autoCapitalize="words" containerStyle={{ marginTop: 0 }}
+        />
+        <Field
+          label="Phone" optional hint="To send them their photos."
+          value={phone} onChangeText={setPhone} placeholder="+91 98765 43210" keyboardType="phone-pad"
+          containerStyle={{ marginTop: 0 }}
+        />
+        <View style={s.consent}>
+          <Checkbox
+            checked={consent} onChange={setConsent}
+            label={`The customer agrees to have their photo taken and kept for ${FOLDER_LIFETIME_DAYS} days.`}
+            hint="Required before you take their photo."
+          />
         </View>
-        <Text style={s.consentText}>
-          Customer agrees to have their photo taken and stored for {FOLDER_LIFETIME_DAYS} days. *
-        </Text>
-      </TouchableOpacity>
+      </Card>
 
-      <Text style={[s.label, { marginTop: Space.lg }]}>MEASUREMENTS (OPTIONAL — NEEDED FOR SIZE ASSIST)</Text>
-      <MeasurementsFields value={meas} onChange={setMeas} />
+      <Card>
+        <View style={{ gap: Space.xs }}>
+          <Text style={s.cardTitle}>Measurements <Text style={s.optional}>Optional</Text></Text>
+          <Text style={s.muted}>Needed for Size Assist. You can add them later from the folder.</Text>
+        </View>
+        <MeasurementsFields value={meas} onChange={setMeas} />
+      </Card>
 
-      {error && <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View>}
+      {error && <Notice tone="error" text={error} />}
 
-      <PillButton
-        variant="secondary"
-        label="Create folder"
-        icon="newCustomer"
-        onPress={create}
-        loading={busy}
-        style={{ marginTop: Space.lg }}
-      />
-      {busy && <ActivityIndicator style={{ marginTop: Space.sm }} color={Colors.primary} />}
-    </ScrollView>
+      <PillButton label="Create folder" icon="newCustomer" onPress={create} loading={busy} />
+    </Page>
   )
 }
 
 const s = StyleSheet.create({
-  scroll: { padding: Space.lg, paddingBottom: Space.xxl, gap: Space.sm, maxWidth: 720, width: '100%', alignSelf: 'center' },
-  back: { flexDirection: 'row', alignItems: 'center', gap: Space.xs, marginBottom: Space.sm },
-  backText: { ...Typography.bodySmall, color: Colors.textMuted },
-  eyebrow: { ...Typography.label, color: Colors.primary },
-  title: { ...Typography.h1, marginBottom: Space.md },
-  label: { ...Typography.label, marginTop: Space.md },
-  input: {
-    backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: Space.base, paddingVertical: 13, ...Typography.body, color: Colors.text,
-  },
-  consentRow: { flexDirection: 'row', alignItems: 'center', gap: Space.md, marginTop: Space.lg },
-  checkbox: {
-    width: 26, height: 26, borderRadius: 6, borderWidth: 2, borderColor: Colors.secondary,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  checkboxOn: { backgroundColor: Colors.secondary },
-  consentText: { ...Typography.body, flex: 1 },
-  errorBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.sm, padding: Space.md, marginTop: Space.md },
-  errorText: { ...Typography.bodySmall, color: Colors.error },
+  stepper: { flexDirection: 'row', gap: Space.sm },
+  stepItem: { flex: 1, gap: Space.sm },
+  stepBar: { height: 4, borderRadius: 2, backgroundColor: Colors.border },
+  stepBarOn: { backgroundColor: Colors.secondary },
+  stepLabel: { ...Typography.caption },
+  stepLabelOn: { ...Weight.semibold, color: Colors.text },
+
+  cardTitle: { ...Typography.h3 },
+  optional: { ...Typography.caption, ...Weight.regular },
+  muted: { ...Typography.bodySmall, color: Colors.textMuted },
+  consent: { paddingTop: Space.xs },
+
   guide: {
-    alignItems: 'center', gap: Space.sm, paddingVertical: Space.xl,
-    borderWidth: 2, borderStyle: 'dashed', borderColor: Colors.primaryLight, borderRadius: Radius.xl,
-    marginBottom: Space.md,
+    alignItems: 'flex-start', gap: Space.md, padding: Space.xl, alignSelf: 'stretch',
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.primary, borderRadius: Radius.xl,
+    backgroundColor: Colors.primarySubtle,
   },
-  tip: { ...Typography.body, color: Colors.textMuted },
-  previewWrap: { backgroundColor: Colors.bgSubtle, borderRadius: Radius.xl, overflow: 'hidden', marginBottom: Space.md },
+  guideIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.bgCard, alignItems: 'center', justifyContent: 'center', marginBottom: Space.xs },
+  tipRow: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
+  tip: { ...Typography.body },
+  previewWrap: { backgroundColor: Colors.bgSubtle, borderRadius: Radius.xl, overflow: 'hidden' },
   preview: { width: '100%', aspectRatio: 3 / 4 },
-  row: { flexDirection: 'row', gap: Space.md },
-  skip: { alignItems: 'center', paddingVertical: Space.lg },
-  skipText: { ...Typography.caption, color: Colors.textFaint },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
+  flex: { flexGrow: 1, flexBasis: 180 },
 })

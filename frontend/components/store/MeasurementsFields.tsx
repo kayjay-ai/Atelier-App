@@ -1,5 +1,6 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
+import { View, Text, StyleSheet } from 'react-native'
+import { Typography, Space } from '../../lib/theme'
+import { Field, Segmented } from '../../lib/ui'
 import type { CustomerMeasurements } from '../../lib/types'
 
 // Staff-entered body measurements for a walk-in customer (needed only for Size
@@ -46,65 +47,36 @@ export function MeasurementsFields({ value, onChange }: {
   onChange: (v: MeasurementValues) => void
 }) {
   return (
-    <View style={{ gap: Space.md }}>
+    <View style={{ gap: Space.base }}>
       <View style={s.grid}>
         {FIELDS.map((f) => (
-          <View key={f.key} style={s.cell}>
-            <Text style={s.label}>{f.label.toUpperCase()}</Text>
-            <View style={s.inputRow}>
-              <TextInput
-                style={s.input}
-                value={value[f.key]}
-                onChangeText={(t) => onChange({ ...value, [f.key]: t })}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor={Colors.textFaint}
-              />
-              <Text style={s.unit}>{f.unit}</Text>
-            </View>
-          </View>
+          <Field
+            key={f.key}
+            label={f.label}
+            value={value[f.key]}
+            onChangeText={(t) => onChange({ ...value, [f.key]: t })}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            right={<Text style={s.unit}>{f.unit}</Text>}
+            containerStyle={s.cell}
+          />
         ))}
       </View>
-      <View>
-        <Text style={s.label}>FIT PREFERENCE</Text>
-        <View style={s.fitRow}>
-          {FITS.map((fit) => {
-            const on = value.fitPreference === fit
-            return (
-              <TouchableOpacity
-                key={fit}
-                style={[s.fitPill, on && s.fitPillOn]}
-                onPress={() => onChange({ ...value, fitPreference: fit })}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-              >
-                <Text style={[s.fitText, on && s.fitTextOn]}>{fit[0].toUpperCase() + fit.slice(1)}</Text>
-              </TouchableOpacity>
-            )
-          })}
-        </View>
+      <View style={{ gap: 6 }}>
+        <Text style={Typography.fieldLabel}>Fit preference</Text>
+        <Segmented
+          options={FITS.map((fit) => ({ value: fit, label: fit[0].toUpperCase() + fit.slice(1) }))}
+          value={value.fitPreference}
+          onChange={(fit) => onChange({ ...value, fitPreference: fit })}
+          accessibilityLabel="Fit preference"
+        />
       </View>
     </View>
   )
 }
 
 const s = StyleSheet.create({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
-  cell: { flexGrow: 1, flexBasis: 140 },
-  label: { ...Typography.label, marginBottom: Space.xs },
-  inputRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.bgSubtle, borderRadius: Radius.md,
-    borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Space.md,
-  },
-  input: { flex: 1, minWidth: 0, ...Typography.body, color: Colors.text, paddingVertical: 10 },
-  unit: { ...Typography.caption },
-  fitRow: { flexDirection: 'row', gap: Space.sm },
-  fitPill: {
-    flex: 1, alignItems: 'center', paddingVertical: 10,
-    borderRadius: Radius.full, borderWidth: 1.5, borderColor: Colors.border,
-  },
-  fitPillOn: { borderColor: Colors.secondary, backgroundColor: Colors.secondary },
-  fitText: { ...Typography.bodySmall, fontWeight: '600', color: Colors.text },
-  fitTextOn: { color: Colors.textOnDark },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: Space.md },
+  cell: { flexGrow: 1, flexBasis: 130 },
+  unit: { ...Typography.caption, paddingRight: Space.base },
 })

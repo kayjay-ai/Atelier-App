@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
+import { View, StyleSheet } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ApiError, ownerLogin } from '../../lib/api'
 import { adoptOwnerSession, safeNext, takePrefill, usePrefill, useOwnerStore } from '../../lib/owner'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon } from '../../lib/ui'
+import { Space } from '../../lib/theme'
+import { Checkbox, Loading } from '../../lib/ui'
 import { AuthShell } from '../../components/owner/AuthShell'
 import { Banner, Btn, Field, LinkText, PasswordField } from '../../components/owner/kit'
 
@@ -55,12 +55,10 @@ export default function OwnerLogin() {
     router.push('/owner/activate')
   }
 
-  if (checking) {
-    return <View style={s.center}><ActivityIndicator color={Colors.primary} /></View>
-  }
+  if (checking) return <Loading />
 
   return (
-    <AuthShell title="Owner sign-in." subtitle="Follow every store in your organization: status, devices, credits and payments.">
+    <AuthShell title="Owner sign-in" subtitle="Follow every store in your organization: status, devices, credits and payments.">
       {notice && <Banner tone="info" text={notice} />}
 
       <Field
@@ -72,16 +70,12 @@ export default function OwnerLogin() {
         autoComplete="current-password" onSubmitEditing={submit}
       />
 
-      <TouchableOpacity
-        style={s.check} onPress={() => setRemember((v) => !v)}
-        accessibilityRole="checkbox" accessibilityState={{ checked: remember }}
-      >
-        <View style={[s.box, remember && s.boxOn]}>{remember && <Icon name="check" size={14} color={Colors.textOnDark} />}</View>
-        <View style={{ flex: 1 }}>
-          <Text style={s.checkLabel}>Keep me signed in</Text>
-          <Text style={s.checkHint}>{remember ? 'For 30 days on this device.' : 'You’ll be signed out after 24 hours.'}</Text>
-        </View>
-      </TouchableOpacity>
+      <View style={{ marginTop: Space.lg }}>
+        <Checkbox
+          checked={remember} onChange={setRemember} label="Keep me signed in"
+          hint={remember ? 'For 30 days on this device.' : 'You will be signed out after 24 hours.'}
+        />
+      </View>
 
       {error && (
         <View style={{ marginTop: Space.md, gap: Space.sm }}>
@@ -101,14 +95,5 @@ export default function OwnerLogin() {
 }
 
 const s = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg },
-  check: { flexDirection: 'row', alignItems: 'center', gap: Space.md, marginTop: Space.lg },
-  box: {
-    width: 22, height: 22, borderRadius: Radius.sm - 2, borderWidth: 1.5, borderColor: Colors.secondary,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  boxOn: { backgroundColor: Colors.secondary },
-  checkLabel: { ...Typography.bodySmall, fontWeight: '600' },
-  checkHint: { ...Typography.caption, color: Colors.textFaint },
   links: { marginTop: Space.lg, alignItems: 'center', gap: Space.xs },
 })

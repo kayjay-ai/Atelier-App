@@ -8,8 +8,8 @@ import {
 import {
   CATEGORY_META, copyText, fmtDate, ownerErrorText, passwordOk, relativeTime, signOutOwner, useOwnerStore,
 } from '../../../lib/owner'
-import { Colors, Typography, Space, Radius } from '../../../lib/theme'
-import { Icon } from '../../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight } from '../../../lib/theme'
+import { Icon, SWITCH_COLORS, Title } from '../../../lib/ui'
 import { Banner, Btn, Card, Field, PasswordChecklist, PasswordField, Pill, Skeleton, confirmDialog, toast, WIDE } from '../../../components/owner/kit'
 
 // ─── Profile: who the owner is, their organization, security, notifications ──
@@ -142,7 +142,7 @@ export default function OwnerProfile() {
 
   return (
     <ScrollView ref={scroll} style={{ backgroundColor: Colors.bg }} contentContainerStyle={[p.page, wide && p.pageWide]} keyboardShouldPersistTaps="handled">
-      <Text style={p.title} accessibilityRole="header">Profile</Text>
+      <Title>Profile</Title>
 
       {/* Account details */}
       <Card>
@@ -204,7 +204,7 @@ export default function OwnerProfile() {
             <View key={s.id} style={p.session}>
               <Icon name={/iPad|iPhone|Android/.test(s.device) ? 'tablet' : 'devices'} size={20} color={Colors.secondary} />
               <View style={{ flex: 1 }}>
-                <Text style={p.value}>{s.device}</Text>
+                <Text style={p.device}>{s.device}</Text>
                 <Text style={p.note}>
                   Last active {relativeTime(s.lastActiveAt)} · signed in {fmtDate(s.createdAt)} · {s.remember ? 'kept signed in' : 'ends after 24 hours'}
                 </Text>
@@ -233,7 +233,7 @@ export default function OwnerProfile() {
             <Switch
               value={prefs.categories[c] !== false} accessibilityLabel={CATEGORY_META[c].label}
               onValueChange={(v) => setPref({ ...prefs, categories: { ...prefs.categories, [c]: v } })}
-              trackColor={{ true: Colors.secondary, false: Colors.border }} thumbColor={Colors.bgCard}
+              {...SWITCH_COLORS}
             />
           </View>
         ))}
@@ -243,7 +243,7 @@ export default function OwnerProfile() {
             <Text style={p.toggleLabel}>Account & security</Text>
             <Text style={p.note}>Always on</Text>
           </View>
-          <Switch value disabled accessibilityLabel="Account and security, always on" trackColor={{ true: Colors.primary, false: Colors.border }} thumbColor={Colors.bgCard} />
+          <Switch value disabled accessibilityLabel="Account and security, always on" {...SWITCH_COLORS} />
         </View>
 
         <Text style={[p.sub, { marginTop: Space.lg }]}>Channels</Text>
@@ -253,7 +253,7 @@ export default function OwnerProfile() {
             <Text style={p.toggleLabel}>In-app</Text>
             <Text style={p.note}>Always on</Text>
           </View>
-          <Switch value disabled accessibilityLabel="In-app, always on" trackColor={{ true: Colors.primary, false: Colors.border }} thumbColor={Colors.bgCard} />
+          <Switch value disabled accessibilityLabel="In-app, always on" {...SWITCH_COLORS} />
         </View>
         <View style={p.toggle}>
           <Icon name="mail" size={18} color={Colors.secondary} />
@@ -263,7 +263,7 @@ export default function OwnerProfile() {
           </View>
           <Switch value={prefs.email} accessibilityLabel="Email notifications"
             onValueChange={(v) => setPref({ ...prefs, email: v })}
-            trackColor={{ true: Colors.secondary, false: Colors.border }} thumbColor={Colors.bgCard} />
+            {...SWITCH_COLORS} />
         </View>
       </Card>
     </ScrollView>
@@ -272,7 +272,8 @@ export default function OwnerProfile() {
 
 const p = StyleSheet.create({
   page: { padding: Space.base, paddingTop: Space.lg, gap: Space.base, paddingBottom: Space.xxl },
-  pageWide: { padding: Space.xl, maxWidth: 820, width: '100%' },
+  pageWide: { padding: Space.xl, maxWidth: 820 + 64, width: '100%', alignSelf: 'center', gap: Space.lg },
+  device: { ...Typography.bodySmall, ...Weight.semibold },
   title: { ...Typography.h1 },
   section: { ...Typography.h3 },
   sub: { ...Typography.label, marginTop: Space.md },
@@ -285,12 +286,12 @@ const p = StyleSheet.create({
   },
   rowLabel: { ...Typography.bodySmall, color: Colors.textMuted },
   rowValue: { flexShrink: 1, alignItems: 'flex-end', maxWidth: '60%' },
-  value: { ...Typography.bodySmall, fontWeight: '600', textAlign: 'right' },
-  note: { ...Typography.caption, color: Colors.textFaint },
-  mono: { ...Typography.bodySmall, fontWeight: '600', letterSpacing: 0.5 },
+  value: { ...Typography.bodySmall, ...Weight.semibold, textAlign: 'right' },
+  note: { ...Typography.caption },
+  mono: { ...Typography.bodySmall, ...Weight.semibold, letterSpacing: 0.5 },
   copy: { flexDirection: 'row', alignItems: 'center', gap: Space.xs, flexShrink: 1 },
   session: { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.md, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle },
   divider: { height: 1, backgroundColor: Colors.borderSubtle, marginVertical: Space.lg },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingVertical: Space.md, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle },
-  toggleLabel: { ...Typography.bodySmall, fontWeight: '600', flex: 1 },
+  toggleLabel: { ...Typography.bodySmall, ...Weight.semibold, flex: 1 },
 })

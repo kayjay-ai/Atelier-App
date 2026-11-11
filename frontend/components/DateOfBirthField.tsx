@@ -1,5 +1,6 @@
-import { View, Text, TextInput, StyleSheet } from 'react-native'
-import { Colors, Typography, Space, Radius } from '../lib/theme'
+import { View, StyleSheet } from 'react-native'
+import { Space } from '../lib/theme'
+import { Field } from '../lib/ui'
 
 // Day / Month / Year boxes — works the same on web, iPad and phones (no native
 // date picker differences). Value is the three strings; parseDob validates.
@@ -26,33 +27,33 @@ export function parseDob(v: DobValue): { iso: string } | { error: string } {
 
 export function DateOfBirthField({ value, onChange }: { value: DobValue; onChange: (v: DobValue) => void }) {
   const digits = (s: string, n: number) => s.replace(/\D/g, '').slice(0, n)
+  const parts = [
+    { key: 'day', label: 'Day', placeholder: 'DD', max: 2, flex: 1 },
+    { key: 'month', label: 'Month', placeholder: 'MM', max: 2, flex: 1 },
+    { key: 'year', label: 'Year', placeholder: 'YYYY', max: 4, flex: 1.4 },
+  ] as const
   return (
-    <View style={s.row}>
-      <View style={s.part}>
-        <Text style={s.label}>DAY</Text>
-        <TextInput style={s.input} value={value.day} placeholder="DD" placeholderTextColor={Colors.textFaint}
-          keyboardType="number-pad" maxLength={2} onChangeText={(t) => onChange({ ...value, day: digits(t, 2) })} />
-      </View>
-      <View style={s.part}>
-        <Text style={s.label}>MONTH</Text>
-        <TextInput style={s.input} value={value.month} placeholder="MM" placeholderTextColor={Colors.textFaint}
-          keyboardType="number-pad" maxLength={2} onChangeText={(t) => onChange({ ...value, month: digits(t, 2) })} />
-      </View>
-      <View style={[s.part, { flex: 1.4 }]}>
-        <Text style={s.label}>YEAR</Text>
-        <TextInput style={s.input} value={value.year} placeholder="YYYY" placeholderTextColor={Colors.textFaint}
-          keyboardType="number-pad" maxLength={4} onChangeText={(t) => onChange({ ...value, year: digits(t, 4) })} />
-      </View>
+    <View style={s.row} accessibilityLabel="Date of birth">
+      {parts.map((p) => (
+        <Field
+          key={p.key}
+          label={p.label}
+          value={value[p.key]}
+          placeholder={p.placeholder}
+          keyboardType="number-pad"
+          maxLength={p.max}
+          onChangeText={(t) => onChange({ ...value, [p.key]: digits(t, p.max) })}
+          containerStyle={[s.part, { flex: p.flex }]}
+          inputStyle={s.input}
+          accessibilityLabel={`Birth ${p.label.toLowerCase()}`}
+        />
+      ))}
     </View>
   )
 }
 
 const s = StyleSheet.create({
   row:   { flexDirection: 'row', gap: Space.sm },
-  part:  { flex: 1, minWidth: 0, gap: Space.xs },
-  label: { ...Typography.label, color: Colors.textFaint },
-  input: {
-    minWidth: 0, width: '100%', backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: Space.md, paddingVertical: 12, ...Typography.body, color: Colors.text, textAlign: 'center',
-  },
+  part:  { minWidth: 0, marginTop: 0 },
+  input: { textAlign: 'center', paddingHorizontal: Space.sm },
 })

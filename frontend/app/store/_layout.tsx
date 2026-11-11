@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, useWindowDimensions } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Linking, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Redirect, router, usePathname } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
@@ -7,45 +7,59 @@ import { useAccountStore, usableCredits } from '../../lib/account'
 import { dismissStoreNotice } from '../../lib/api'
 import { SUPPORT_EMAIL } from '../../lib/b2b'
 import { beatNow, signOutStore, startHeartbeat, stopHeartbeat, useHeartbeat } from '../../lib/heartbeat'
-import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Icon, IconName, bottomTabOptions } from '../../lib/ui'
+import { Colors, Typography, Space, Layout, Weight } from '../../lib/theme'
+import {
+  AppTabBar, CreditPill, Icon, Loading, PillButton, TextLink, Title, tabScreenOptions, type IconName, type TabItem,
+} from '../../lib/ui'
 import PlanScreen from './plan'
 
 // ─── B2B in-store app shell (/store) ──────────────────────────────────────────
 // Only company logins reach this layout; anyone else is sent back to sign-in.
-// Bottom tab bar on every device; iPad (≥ 768 pt wide) shows the full labels.
+// Phones and portrait iPads: the store's name and credits on top, the tabs in
+// the bottom bar. From Layout.desktop (landscape iPads, laptops) the tabs move
+// into the top bar.
 
-const WIDE_BREAKPOINT = 768
+const TABS: TabItem[] = [
+  { name: 'index',     title: 'Home',            icon: 'tryOn' },
+  { name: 'customers', title: 'Customers',       icon: 'profile' },
+  { name: 'plan',      title: 'Plan & Credits',  short: 'Plan',    icon: 'premium' },
+  { name: 'company',   title: 'Company Profile', short: 'Company', icon: 'company' },
+]
 
-function RailIcon({ icon, focused }: { icon: IconName; focused: boolean }) {
-  return <Icon name={icon} size={22} color={focused ? Colors.secondary : Colors.primary} />
+function StoreName() {
+  const account = useAccountStore((s) => s.account)
+  if (account?.type !== 'b2b_company') return null
+  const { companyName, storeName } = account.client
+  return (
+    <View style={{ flexShrink: 1, minWidth: 0 }}>
+      <Text style={h.sub} numberOfLines={1}>ATELIER  ·  STORE</Text>
+      <Text style={h.company} numberOfLines={1}>
+        {companyName}{storeName && storeName !== companyName ? <Text style={h.store}>{`  ${storeName}`}</Text> : null}
+      </Text>
+    </View>
+  )
 }
 
-function StoreHeader() {
+function StoreCredits() {
   const account = useAccountStore((s) => s.account)
   if (account?.type !== 'b2b_company') return null
   const credits = usableCredits(account.client)
   return (
+    <CreditPill
+      empty={credits <= 0}
+      onPress={() => router.navigate('/store/plan')}
+      label={`${credits.toLocaleString('en-IN')} credit${credits === 1 ? '' : 's'}`}
+      accessibilityLabel={`${credits} credits left. Open Plan and Credits.`}
+    />
+  )
+}
+
+function StoreHeader() {
+  return (
     <SafeAreaView edges={['top']} style={h.safe}>
       <View style={h.row}>
-        <View style={{ flex: 1 }}>
-          <Text style={h.sub}>QUASAR'S ATELIER · STORE</Text>
-          <Text style={h.company} numberOfLines={1}>
-            {account.client.companyName}
-            {account.client.storeName && account.client.storeName !== account.client.companyName ? ` · ${account.client.storeName}` : ''}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[h.credits, credits <= 0 && h.creditsEmpty]}
-          onPress={() => router.navigate('/store/plan')}
-          accessibilityRole="button"
-          accessibilityLabel={`${credits} credits left. Open Plan and Credits.`}
-        >
-          <Icon name="star" size={14} color={credits <= 0 ? Colors.error : Colors.secondary} />
-          <Text style={[h.creditsText, credits <= 0 && { color: Colors.error }]}>
-            {credits.toLocaleString('en-IN')} credit{credits === 1 ? '' : 's'}
-          </Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1, minWidth: 0 }}><StoreName /></View>
+        <StoreCredits />
       </View>
     </SafeAreaView>
   )
@@ -107,44 +121,41 @@ function StoreBanner() {
 
   return (
     <View style={[b.wrap, tone === 'error' ? b.error : b.warn]}>
-      <TouchableOpacity style={{ flex: 1 }} onPress={() => router.navigate('/store/plan')} accessibilityRole="button">
-        <Text style={[b.text, { color: tone === 'error' ? Colors.error : Colors.warning }]}>{text}</Text>
-      </TouchableOpacity>
-      {onClose && (
-        <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Dismiss message">
-          <Icon name="close" size={18} color={Colors.textMuted} />
+      <View style={b.inner}>
+        <Icon name="alert" size={18} color={tone === 'error' ? Colors.error : Colors.warning} />
+        <TouchableOpacity style={{ flex: 1 }} onPress={() => router.navigate('/store/plan')} accessibilityRole="button" accessibilityHint="Opens Plan and Credits">
+          <Text style={[b.text, { color: tone === 'error' ? Colors.error : Colors.warning }]}>{text}</Text>
         </TouchableOpacity>
-      )}
+        {onClose && (
+          <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityLabel="Dismiss message">
+            <Icon name="close" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   )
 }
 
-function FullScreenMessage({ title, body, action }: {
+function FullScreenMessage({ title, body, icon = 'lock', action }: {
   title: string
   body: string
+  icon?: IconName
   action?: { label: string; onPress: () => void }
 }) {
   return (
     <SafeAreaView style={x.safe}>
       <View style={x.card}>
-        <Text style={x.title}>{title}</Text>
+        <View style={x.icon}><Icon name={icon} size={26} color={Colors.primaryLight} /></View>
+        <Title size="h2" tone="light" align="center">{title}</Title>
         <Text style={x.body}>{body}</Text>
-        {action && (
-          <TouchableOpacity style={x.primary} onPress={action.onPress}>
-            <Text style={x.primaryText}>{action.label}</Text>
-          </TouchableOpacity>
-        )}
-        {!!SUPPORT_EMAIL && (
-          <TouchableOpacity style={x.secondary} onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}>
-            <Text style={x.secondaryText}>Contact Atelier support</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={x.link}
-          onPress={async () => { await signOutStore(); router.replace('/auth') }}
-        >
-          <Text style={x.linkText}>Sign out</Text>
-        </TouchableOpacity>
+        <View style={x.actions}>
+          {action && <PillButton variant="gold" label={action.label} onPress={action.onPress} size="md" />}
+          {!!SUPPORT_EMAIL && (
+            <PillButton variant={action ? 'ghost' : 'gold'} label="Contact Atelier support" size="md"
+              onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} style={action ? x.ghost : undefined} />
+          )}
+        </View>
+        <TextLink label="Sign out of this device" tone="light" onPress={async () => { await signOutStore(); router.replace('/auth') }} />
       </View>
     </SafeAreaView>
   )
@@ -190,13 +201,14 @@ export default function StoreLayout() {
   }, [accountStatus, storeStatus])
 
   if (status === 'loading') {
-    return <View style={x.center}><ActivityIndicator color={Colors.primary} /></View>
+    return <Loading label="Opening your store…" />
   }
   if (status === 'error') {
     return (
       <FullScreenMessage
-        title="Couldn't load your company"
-        body="Check the iPad's internet connection and try again."
+        title="Couldn’t load your store"
+        icon="alert"
+        body="Check this iPad’s internet connection, then try again."
         action={{ label: 'Try again', onPress: () => setAttempt((n) => n + 1) }}
       />
     )
@@ -221,16 +233,12 @@ export default function StoreLayout() {
       <View style={{ flex: 1, backgroundColor: Colors.bg }}>
         <SafeAreaView edges={['top']} style={h.safe}>
           <View style={h.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={h.sub}>QUASAR'S ATELIER · STORE</Text>
-              <Text style={h.company} numberOfLines={1}>{account.client.companyName} · paused</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={h.sub}>QUASAR’S ATELIER  ·  STORE PAUSED</Text>
+              <Text style={h.company} numberOfLines={1}>{account.client.companyName}</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => { setLockedPlanOpen(false); if (onPlanRoute) router.replace('/store') }}
-              accessibilityRole="button"
-            >
-              <Text style={x.linkText}>Close</Text>
-            </TouchableOpacity>
+            <PillButton label="Close" variant="outline" size="sm" icon="close"
+              onPress={() => { setLockedPlanOpen(false); if (onPlanRoute) router.replace('/store') }} />
           </View>
         </SafeAreaView>
         <PlanScreen />
@@ -275,19 +283,25 @@ export default function StoreLayout() {
     )
   }
 
-  const wide = width >= WIDE_BREAKPOINT
+  const desktop = width >= Layout.desktop
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <StoreHeader />
-      <StoreBanner />
+      {!desktop && <StoreHeader />}
+      {!desktop && <StoreBanner />}
       <View style={{ flex: 1 }}>
-        <Tabs screenOptions={{ ...bottomTabOptions(wide, insets.bottom), tabBarLabelStyle: { ...Typography.label, fontSize: wide ? 11 : 9, marginTop: 4, color: undefined } }}>
-          <Tabs.Screen name="index"     options={{ title: 'Home',            tabBarIcon: ({ focused }) => <RailIcon icon="tryOn"   focused={focused} /> }} />
-          <Tabs.Screen name="customers" options={{ title: 'Customers',       tabBarIcon: ({ focused }) => <RailIcon icon="profile" focused={focused} /> }} />
-          <Tabs.Screen name="plan"      options={{ title: 'Plan & Credits',  tabBarLabel: wide ? 'Plan & Credits' : 'Plan', tabBarIcon: ({ focused }) => <RailIcon icon="premium" focused={focused} /> }} />
-          <Tabs.Screen name="company"   options={{ title: 'Company Profile', tabBarLabel: wide ? 'Company Profile' : 'Company', tabBarIcon: ({ focused }) => <RailIcon icon="company" focused={focused} /> }} />
-          {/* Pushed screens — reachable, but not in the rail */}
+        <Tabs
+          screenOptions={tabScreenOptions(desktop)}
+          tabBar={(props) => (
+            <View>
+              <AppTabBar {...props} items={TABS} desktop={desktop} insetBottom={insets.bottom}
+                brand={<StoreName />} right={<StoreCredits />} />
+              {desktop && <StoreBanner />}
+            </View>
+          )}
+        >
+          {TABS.map((t) => <Tabs.Screen key={t.name} name={t.name} options={{ title: t.title }} />)}
+          {/* Pushed screens — reachable, but not in the tab bar */}
           <Tabs.Screen name="new-customer"  options={{ href: null }} />
           <Tabs.Screen name="customer/[id]" options={{ href: null }} />
         </Tabs>
@@ -299,37 +313,24 @@ export default function StoreLayout() {
 const h = StyleSheet.create({
   safe: { backgroundColor: Colors.bg, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle },
   row:  { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingHorizontal: Space.lg, paddingVertical: Space.md },
-  sub:  { ...Typography.label, color: Colors.primary, letterSpacing: 3, fontSize: 9 },
-  company: { ...Typography.h3 },
-  credits: {
-    flexDirection: 'row', alignItems: 'center', gap: Space.xs,
-    backgroundColor: Colors.primarySubtle, borderRadius: Radius.full,
-    paddingHorizontal: Space.md, paddingVertical: Space.sm,
-  },
-  creditsEmpty: { backgroundColor: Colors.errorBg },
-  creditsText: { ...Typography.bodySmall, fontWeight: '600', color: Colors.secondary },
+  sub:  { ...Typography.label, fontSize: 9, letterSpacing: 2.5, color: Colors.accentInk },
+  company: { ...Typography.h2, fontSize: 22, lineHeight: 28 },
+  store: { ...Typography.body, ...Weight.medium, color: Colors.textMuted },
 })
 
 const b = StyleSheet.create({
-  wrap:  { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingHorizontal: Space.lg, paddingVertical: Space.sm },
-  warn:  { backgroundColor: Colors.warningBg },
-  error: { backgroundColor: Colors.errorBg },
-  text:  { ...Typography.bodySmall, fontWeight: '600' },
+  wrap:  { paddingVertical: Space.sm + 2, borderBottomWidth: 1 },
+  inner: { flexDirection: 'row', alignItems: 'center', gap: Space.md, width: '100%', maxWidth: Layout.wide + 64, alignSelf: 'center', paddingHorizontal: Space.lg },
+  warn:  { backgroundColor: Colors.warningBg, borderBottomColor: '#F4E7B8' },
+  error: { backgroundColor: Colors.errorBg, borderBottomColor: '#F6D3CD' },
+  text:  { ...Typography.bodySmall, ...Weight.semibold },
 })
 
 const x = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg },
-  safe:   { flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center', padding: Space.lg },
-  card:   {
-    width: '100%', maxWidth: 440, backgroundColor: Colors.bgCard, borderRadius: Radius.xl,
-    padding: Space.xl, gap: Space.md, alignItems: 'center',
-  },
-  title:  { ...Typography.h2, textAlign: 'center' },
-  body:   { ...Typography.body, color: Colors.textMuted, textAlign: 'center' },
-  primary: { alignSelf: 'stretch', backgroundColor: Colors.secondary, borderRadius: Radius.full, paddingVertical: 14, alignItems: 'center', marginTop: Space.sm },
-  primaryText: { ...Typography.body, fontWeight: '600', color: Colors.textOnDark },
-  secondary: { alignSelf: 'stretch', borderWidth: 1.5, borderColor: Colors.secondary, borderRadius: Radius.full, paddingVertical: 12, alignItems: 'center' },
-  secondaryText: { ...Typography.body, fontWeight: '600', color: Colors.secondary },
-  link: { paddingVertical: Space.sm },
-  linkText: { ...Typography.caption, color: Colors.textFaint },
+  safe:   { flex: 1, backgroundColor: Colors.bgDark, alignItems: 'center', justifyContent: 'center', padding: Space.lg },
+  card:   { width: '100%', maxWidth: 460, gap: Space.base, alignItems: 'center' },
+  icon:   { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(250,248,245,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: Space.sm },
+  body:   { ...Typography.body, color: Colors.textOnDarkMuted, textAlign: 'center' },
+  actions: { alignSelf: 'stretch', gap: Space.sm, marginTop: Space.sm },
+  ghost:  { backgroundColor: 'rgba(250,248,245,0.08)' },
 })

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native'
+import { View, Text, StyleSheet } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ApiError, acceptStoreInvite, fetchStoreInvite, type StoreInvite } from '../lib/api'
 import { passwordOk, usePrefill } from '../lib/owner'
 import { Colors, Typography, Space } from '../lib/theme'
+import { Loading } from '../lib/ui'
 import { AuthShell } from '../components/owner/AuthShell'
 import { Banner, Btn, Field, PasswordChecklist, PasswordField } from '../components/owner/kit'
 
@@ -47,13 +48,11 @@ export default function AcceptInvite() {
     }
   }
 
-  if (!invite && !problem) {
-    return <View style={s.center}><ActivityIndicator color={Colors.primary} /></View>
-  }
+  if (!invite && !problem) return <Loading label="Opening your invite…" />
 
   if (!invite) {
     return (
-      <AuthShell title="Store invite." showSwitch={false}>
+      <AuthShell title="Store invite" showSwitch={false}>
         <Banner tone="error" text={problem!.text} />
         {problem!.code === 'already_accepted' && <Btn label="Go to sign in" onPress={() => toSignIn()} style={{ marginTop: Space.lg }} />}
       </AuthShell>
@@ -64,7 +63,7 @@ export default function AcceptInvite() {
   const first = invite.managerName.split(' ')[0]
   return (
     <AuthShell
-      title={`Welcome${first ? `, ${first}` : ''}.`} showSwitch={false}
+      title={`Welcome${first ? `, ${first}` : ''}`} showSwitch={false}
       subtitle={`${invite.organization || 'Your owner'} invited you to manage ${invite.storeName}${invite.city ? ` (${invite.city})` : ''} on Atelier.`}
     >
       <Field label="Store" value={invite.storeName} editable={false} />
@@ -96,6 +95,5 @@ export default function AcceptInvite() {
 }
 
 const s = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg },
   small: { ...Typography.caption, color: Colors.textMuted, textAlign: 'center', marginTop: Space.md },
 })

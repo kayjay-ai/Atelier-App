@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, useWindowDimensions } from 'react-native'
+import { View, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createPayment, getPaymentStatus, fetchPricing } from './api'
 import { showAlert } from './notify'
@@ -7,7 +7,8 @@ import { openCashfreeCheckout } from './cashfreeCheckout'
 import { PRICING_OPTIONS, inr } from './pricing'
 import { useMembershipStore } from './store'
 import type { Membership, PricingOption, PurchaseType } from './types'
-import { Colors, Typography, Space, Radius } from './theme'
+import { Colors, Typography, Space, Radius, Shadow, Weight } from './theme'
+import { Field, PillButton, Tag } from './ui'
 
 /** Plans from the server (admin-editable names / prices), with the built-in fallback. */
 export function usePricingOptions(): PricingOption[] {
@@ -65,97 +66,85 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
       const status = await getPaymentStatus(order.orderId) // server verifies + grants
       if (status.paid && status.membership) {
         membershipStore.setMembership(status.membership)
-        showAlert('Credits added', `+${order.credits} credit${order.credits > 1 ? 's' : ''} added — you now have ${status.membership.creditsBalance}.`)
+        showAlert('Credits added', `+${order.credits} credit${order.credits > 1 ? 's' : ''} added — you now have ${status.membership.creditsBalance}.`, 'success')
         onPurchased?.(status.membership)
       } else {
         showAlert('Payment not confirmed', `We haven't received confirmation yet (status: ${status.orderStatus}). If you were charged, it'll reflect shortly.`)
       }
     } catch (e: any) {
-      showAlert('Checkout', e?.message || 'Payment was not completed. Please try again.')
+      showAlert('Payment not completed', e?.message || 'No money was taken. Please try again.', 'error')
     } finally {
       setBusy(null)
     }
   }
 
   return (
-    <View style={{ gap: Space.sm }}>
+    <View style={{ gap: Space.base }}>
       {Platform.OS === 'web' && (
-        <View style={s.phoneRow}>
-          <Text style={s.phoneLabel}>MOBILE NUMBER (FOR YOUR PAYMENT)</Text>
-          <TextInput
-            style={s.phoneInput}
-            value={phone}
-            onChangeText={(t) => { setPhone(t); setPhoneError(null) }}
-            placeholder="10-digit mobile number"
-            placeholderTextColor={Colors.textMuted}
-            keyboardType="phone-pad"
-            autoComplete="tel"
-            maxLength={16}
-          />
-          {!!phoneError && <Text style={s.phoneError}>{phoneError}</Text>}
-        </View>
+        <Field
+          label="Mobile number"
+          hint="The payment provider needs it. It’s remembered on this device."
+          value={phone}
+          onChangeText={(t) => { setPhone(t); setPhoneError(null) }}
+          placeholder="10-digit mobile number"
+          keyboardType="phone-pad"
+          autoComplete="tel"
+          maxLength={16}
+          error={phoneError}
+          tone="card"
+          containerStyle={{ marginTop: 0, maxWidth: 360 }}
+        />
       )}
       <View style={[s.grid, stack && s.gridStacked]} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
         {options.map((opt) => {
           const featured = opt.type === recommended
+          const perTry = opt.credits > 1 ? `${inr(Math.round((opt.amountInr / opt.credits) * 10) / 10)} per try-on` : opt.blurb
           return (
             <View key={opt.type} style={[s.card, stack ? s.cardStack : s.cardRow, featured && s.cardFeatured]}>
-              {featured && <Text style={s.badge}>RECOMMENDED</Text>}
-              <Text style={s.name}>{opt.label}</Text>
-              <Text style={s.price} numberOfLines={1}>{inr(opt.amountInr)}</Text>
-              <Text style={s.credits}>{opt.credits} credit{opt.credits === 1 ? '' : 's'}</Text>
-              <Text style={s.blurb}>
-                {opt.credits > 1 ? `${inr(Math.round((opt.amountInr / opt.credits) * 10) / 10)} per try-on` : opt.blurb}
-              </Text>
+              <View style={s.cardHead}>
+                <Text style={[s.name, featured && s.onDark]}>{opt.label}</Text>
+                {featured && <Tag label="Recommended" tone="dark" />}
+              </View>
+              <Text style={[s.price, featured && s.onDark]} numberOfLines={1}>{inr(opt.amountInr)}</Text>
+              <Text style={[s.credits, featured && s.onDark]}>{opt.credits} try-on credit{opt.credits === 1 ? '' : 's'}</Text>
+              {!!perTry && <Text style={[s.blurb, featured && s.onDarkMuted]}>{perTry}</Text>}
               <View style={s.spacer} />
-              <TouchableOpacity
-                style={[s.btn, featured ? s.btnSolid : s.btnOutline, !!busy && busy !== opt.type && { opacity: 0.5 }]}
-                disabled={!!busy}
+              <PillButton
+                label={`Choose ${opt.label}`}
+                variant={featured ? 'gold' : 'outline'}
+                size="md"
+                loading={busy === opt.type}
+                disabled={!!busy && busy !== opt.type}
                 onPress={() => buy(opt)}
-              >
-                {busy === opt.type
-                  ? <ActivityIndicator color={featured ? Colors.textOnDark : Colors.secondary} />
-                  : <Text style={[s.btnText, featured && { color: Colors.textOnDark }]}>Choose</Text>}
-              </TouchableOpacity>
+                style={{ marginTop: Space.base }}
+              />
             </View>
           )
         })}
       </View>
-      <Text style={s.note}>1 credit = 1 try-on. Credits stack and don’t expire.</Text>
+      <Text style={s.note}>1 credit = 1 try-on. Credits stack and never expire. Size advice and style tips are free.</Text>
     </View>
   )
 }
 
 const s = StyleSheet.create({
-  phoneRow: { gap: 6, maxWidth: 360 },
-  phoneLabel: { ...Typography.label },
-  phoneInput: {
-    backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: Space.base, paddingVertical: 12, ...Typography.body, color: Colors.text,
-  },
-  phoneError: { ...Typography.bodySmall, color: Colors.error },
   grid: { flexDirection: 'row', gap: Space.md },
   gridStacked: { flexDirection: 'column' },
   // Row: equal thirds. Stacked: natural height (basis 0 in a column collapses the cards).
   cardRow:   { flexBasis: 0, flexGrow: 1 },
   cardStack: { alignSelf: 'stretch' },
   card: {
-    minWidth: 0, backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
-    borderWidth: 1, borderColor: Colors.border, padding: Space.base, gap: Space.xs,
+    minWidth: 0, backgroundColor: Colors.bgCard, borderRadius: Radius.xl,
+    borderWidth: 1, borderColor: Colors.border, padding: Space.lg, gap: Space.xs,
   },
-  cardFeatured: { borderColor: Colors.secondary, borderWidth: 2 },
-  badge: {
-    alignSelf: 'flex-start', ...Typography.label, fontSize: 9, letterSpacing: 1.5, color: Colors.textOnDark,
-    backgroundColor: Colors.secondary, borderRadius: Radius.full, paddingHorizontal: Space.sm, paddingVertical: 3, overflow: 'hidden',
-  },
+  cardFeatured: { backgroundColor: Colors.bgDark, borderColor: Colors.bgDark, ...Shadow.card },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Space.sm, minHeight: 26 },
   name:    { ...Typography.h3 },
-  price:   { ...Typography.h1, fontSize: 28, lineHeight: 34, color: Colors.text },
-  credits: { ...Typography.body, color: Colors.text },
-  blurb:   { ...Typography.caption, color: Colors.textMuted },
-  btn:     { marginTop: Space.sm, minHeight: 44, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center' },
-  btnSolid:   { backgroundColor: Colors.secondary },
-  btnOutline: { borderWidth: 1.5, borderColor: Colors.secondary },
-  btnText: { ...Typography.bodySmall, fontWeight: '600', color: Colors.secondary },
-  note:    { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
-  spacer:  { flexGrow: 1 }, // pins "Choose" to the bottom so the row's buttons line up
+  price:   { ...Typography.numeral, fontSize: 36, lineHeight: 44, marginTop: Space.sm },
+  credits: { ...Typography.body, ...Weight.medium },
+  blurb:   { ...Typography.caption },
+  onDark:  { color: Colors.textOnDark },
+  onDarkMuted: { color: Colors.textOnDarkMuted },
+  note:    { ...Typography.caption, textAlign: 'center' },
+  spacer:  { flexGrow: 1 }, // pins the button to the bottom so the row's buttons line up
 })

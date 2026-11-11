@@ -5,7 +5,7 @@ import {
   ApiError, ownerVerify, ownerResendCode, ownerConfirmCode, ownerTokenStatus, ownerSetPassword, type OwnerPurpose,
 } from '../../lib/api'
 import { adoptOwnerSession, passwordOk, takePrefill, usePrefill, useOwnerStore } from '../../lib/owner'
-import { Colors, Typography, Space } from '../../lib/theme'
+import { Colors, Typography, Space, Weight } from '../../lib/theme'
 import { AuthShell } from './AuthShell'
 import { Banner, Btn, Field, LinkText, OtpInput, PasswordChecklist, PasswordField } from './kit'
 
@@ -154,7 +154,7 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
     const canVerify = orgCode.trim().length > 0 && looksLikeEmail(email) && !busy
     return (
       <AuthShell
-        title={reset ? 'Reset your password.' : 'Verify your account.'}
+        title={reset ? 'Reset your password' : 'Verify your account'}
         subtitle={reset
           ? 'Enter your store code and the email registered for your organization. We’ll email you a code.'
           : 'Enter the store code Atelier gave you and the email it was registered to. We’ll email you a 6-digit code.'}
@@ -184,7 +184,7 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
   // ── Screen B ───────────────────────────────────────────────────────────────
   if (step === 'code') {
     return (
-      <AuthShell title="Enter the code." showSwitch={false}>
+      <AuthShell title="Enter the code" showSwitch={false}>
         <Text style={s.copy}>We’ve sent a 6-digit code to <Text style={s.bold}>{masked}</Text>. It works for 10 minutes.</Text>
         <LinkText label="Wrong email? Go back." onPress={() => backToDetails(null)} style={{ alignSelf: 'flex-start' }} />
         <OtpInput value={code} onChange={(v) => { setCode(v); setProblem(null) }} onComplete={confirm} disabled={busy} error={!!problem} />
@@ -203,7 +203,7 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
   // ── Screen C ───────────────────────────────────────────────────────────────
   const match = pw2.length > 0 && pw === pw2
   return (
-    <AuthShell title={reset ? 'Set a new password.' : 'Create your password.'} showSwitch={false}
+    <AuthShell title={reset ? 'Set a new password' : 'Create your password'} showSwitch={false}
       subtitle={reset ? 'Your other devices will be signed out.' : 'You’ll sign in with your email and this password from now on.'}>
       <PasswordField label="New password" value={pw} onChangeText={setPw} autoComplete="new-password" />
       <PasswordChecklist password={pw} />
@@ -230,6 +230,6 @@ const s = StyleSheet.create({
   problem: { marginTop: Space.md, gap: Space.sm },
   links: { marginTop: Space.lg, alignItems: 'center' },
   copy: { ...Typography.body, color: Colors.textMuted },
-  bold: { fontWeight: '700', color: Colors.text },
-  muted: { ...Typography.bodySmall, color: Colors.textFaint },
+  bold: { ...Weight.semibold, color: Colors.text },
+  muted: { ...Typography.bodySmall, color: Colors.textMuted },
 })

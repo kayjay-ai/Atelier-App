@@ -4,6 +4,7 @@ import { router } from 'expo-router'
 import { ApiError, addOwnerStore, resendStoreInvite, type AddStoreInput } from '../../../lib/api'
 import { INDIAN_STATES, ownerErrorText } from '../../../lib/owner'
 import { Colors, Typography, Space } from '../../../lib/theme'
+import { PageHeader } from '../../../lib/ui'
 import { Banner, Btn, Card, Field, SelectField, toast, WIDE } from '../../../components/owner/kit'
 import { showTestInvite } from '../../../components/owner/storeActions'
 
@@ -114,8 +115,7 @@ export default function AddStore() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={[s.page, wide && s.pageWide]} keyboardShouldPersistTaps="handled">
-        <Text style={s.title} accessibilityRole="header">Add Store</Text>
-        <Text style={s.sub}>Create a store and invite its manager in one step. The invite link works once and expires in 7 days.</Text>
+        <PageHeader title="Add Store" subtitle="Create the store and invite its manager in one step. The invite link works once and expires in 7 days." />
 
         <Card style={{ gap: Space.xs }}>
           <Text style={s.section}>Store</Text>
@@ -176,7 +176,7 @@ export default function AddStore() {
 
 const s = StyleSheet.create({
   page: { padding: Space.base, paddingTop: Space.lg, gap: Space.base, paddingBottom: Space.xxl },
-  pageWide: { padding: Space.xl, maxWidth: 820, width: '100%' },
+  pageWide: { padding: Space.xl, maxWidth: 820 + 64, width: '100%', alignSelf: 'center', gap: Space.lg },
   title: { ...Typography.h1 },
   sub: { ...Typography.bodySmall, color: Colors.textMuted },
   section: { ...Typography.h3 },

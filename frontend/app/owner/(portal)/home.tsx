@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native'
+import { View, Text, TextInput, ScrollView, TouchableOpacity, Pressable, StyleSheet, useWindowDimensions } from 'react-native'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import {
   fetchOwnerStores, fetchOwnerSummary,
   type OwnerSortKey, type OwnerStorePage, type OwnerStoreRow, type OwnerSummary,
 } from '../../../lib/api'
 import { fmtDate, num, ownerErrorText, preActive, STATUS_META, STATUS_ORDER, useOwnerStore } from '../../../lib/owner'
-import { Colors, Typography, Space, Radius } from '../../../lib/theme'
-import { Icon, type IconName } from '../../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight, Layout, Shadow } from '../../../lib/theme'
+import { Card, EmptyState, Icon, PageHeader, type IconName } from '../../../lib/ui'
+import type { MenuItem } from '../../../components/owner/kit'
+
+/** Every row menu starts with View details, so the drawer is reachable from the keyboard. */
+const withDetails = (items: MenuItem[], open: () => void): MenuItem[] => [{ label: 'View details', icon: 'info', onPress: open }, ...items]
 import { Banner, Btn, Chip, RowMenu, Skeleton, StatusPill, WIDE } from '../../../components/owner/kit'
 import { StoreDrawer, type DrawerSection } from '../../../components/owner/StoreDrawer'
 import { storeMenu, storeActions } from '../../../components/owner/storeActions'
@@ -160,13 +164,11 @@ export default function OwnerHome() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <ScrollView contentContainerStyle={[h.page, wide && h.pageWide]} keyboardShouldPersistTaps="handled">
-        <View style={h.head}>
-          <View style={{ flex: 1 }}>
-            <Text style={h.eyebrow}>{orgName.toUpperCase()}</Text>
-            <Text style={h.title} accessibilityRole="header">Home</Text>
-          </View>
-          <Btn small icon="storePlus" label="Add store" onPress={() => router.navigate('/owner/add-store')} />
-        </View>
+        <PageHeader
+          title="Home"
+          subtitle={orgName ? `Every ${orgName} store: status, devices, credits and payments.` : 'Status, devices, credits and payments for every store.'}
+          actions={<Btn icon="storePlus" label="Add store" onPress={() => router.navigate('/owner/add-store')} />}
+        />
 
         {error && <Banner text={error} actionLabel="Retry" onAction={reload} />}
 
@@ -193,12 +195,11 @@ export default function OwnerHome() {
         </View>
 
         {noStores ? (
-          <View style={h.empty}>
-            <Icon name="storePlus" size={36} color={Colors.primary} />
-            <Text style={h.emptyTitle}>Your first store is one invite away</Text>
-            <Text style={h.emptyText}>Add a store and invite its manager. It shows up here right away, and you can follow its devices, credits and payments.</Text>
-            <Btn label="Add your first store" icon="storePlus" onPress={() => router.navigate('/owner/add-store')} style={{ marginTop: Space.md }} />
-          </View>
+          <Card>
+            <EmptyState icon="storePlus" title="Your first store is one invite away"
+              body="Add a store and invite its manager. It shows up here straight away, with its devices, credits and payments."
+              action={{ label: 'Add your first store', icon: 'storePlus', onPress: () => router.navigate('/owner/add-store') }} />
+          </Card>
         ) : (
           <View style={h.tableCard}>
             {/* Toolbar: search, status filter, sort */}
@@ -235,12 +236,10 @@ export default function OwnerHome() {
                 {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} height={wide ? 22 : 86} />)}
               </View>
             ) : page && page.stores.length === 0 ? (
-              <View style={h.empty}>
-                <Text style={h.emptyTitle}>No stores match these filters</Text>
-                <Btn small kind="secondary" label="Clear filters" onPress={clearAll} style={{ marginTop: Space.sm }} />
-              </View>
+              <EmptyState icon="filter" title="No stores match these filters" body="Try another status, or clear the search."
+                secondary={{ label: 'Clear filters', onPress: clearAll }} />
             ) : page && wide ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator>
+              <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
                 <View style={{ minWidth: 880, flex: 1 }}>
                   <View style={[h.tr, h.thead]}>
                     {COLUMNS.map((c) => {
@@ -261,9 +260,11 @@ export default function OwnerHome() {
                     const early = preActive(r.status)
                     const open = () => setDrawer({ id: r.id, section: null })
                     return (
-                      <TouchableOpacity key={r.id} style={[h.tr, loading && { opacity: 0.6 }]} onPress={open} accessibilityRole="button" accessibilityLabel={`${r.name}, ${STATUS_META[r.status].label}. Open details`}>
+                      <Pressable key={r.id} style={(st: any) => [h.tr, st.hovered && h.trHover, loading && { opacity: 0.6 }]} onPress={open} focusable={false}>
                         <View style={[h.td, { flex: 1.5 }]}>
-                          <Text style={h.cellStrong} numberOfLines={1}>{r.name}</Text>
+                          <TouchableOpacity onPress={open} accessibilityRole="button" accessibilityLabel={`${r.name}, ${STATUS_META[r.status].label}. Open details`}>
+                            <Text style={h.cellStrong} numberOfLines={1}>{r.name}</Text>
+                          </TouchableOpacity>
                           <Text style={h.cellMuted}>{r.id}</Text>
                         </View>
                         <View style={[h.td, { flex: 1.1 }]}><Text style={h.cell} numberOfLines={2}>{r.location || '—'}</Text></View>
@@ -274,9 +275,9 @@ export default function OwnerHome() {
                         <View style={[h.td, { flex: 1.4 }]}>{early || !r.packageName ? <Dash /> : <CreditsBar used={r.creditsUsed} total={r.creditsTotal} />}</View>
                         <View style={[h.td, { flex: 1 }]}>{early || !r.lastPaymentAt ? <Dash /> : <Text style={h.cell}>{fmtDate(r.lastPaymentAt)}</Text>}</View>
                         <View style={{ width: 40, alignItems: 'center' }}>
-                          <RowMenu items={storeMenu(r, { reload, open })} label={`Actions for ${r.name}`} />
+                          <RowMenu items={withDetails(storeMenu(r, { reload, open }), open)} label={`Actions for ${r.name}`} />
                         </View>
-                      </TouchableOpacity>
+                      </Pressable>
                     )
                   })}
                 </View>
@@ -287,13 +288,13 @@ export default function OwnerHome() {
                   const early = preActive(r.status)
                   const open = () => setDrawer({ id: r.id, section: null })
                   return (
-                    <TouchableOpacity key={r.id} style={[h.mCard, loading && { opacity: 0.6 }]} onPress={open} accessibilityRole="button" accessibilityLabel={`${r.name}, ${STATUS_META[r.status].label}. Open details`}>
+                    <Pressable key={r.id} style={[h.mCard, loading && { opacity: 0.6 }]} onPress={open} focusable={false}>
                       <View style={h.mHead}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={h.cellStrong} numberOfLines={1}>{r.name}</Text>
+                        <TouchableOpacity style={{ flex: 1 }} onPress={open} accessibilityRole="button" accessibilityLabel={`${r.name}, ${STATUS_META[r.status].label}. Open details`}>
+                          <Text style={h.mName} numberOfLines={1}>{r.name}</Text>
                           <Text style={h.cellMuted} numberOfLines={1}>{r.location || '—'}</Text>
-                        </View>
-                        <RowMenu items={storeMenu(r, { reload, open })} label={`Actions for ${r.name}`} />
+                        </TouchableOpacity>
+                        <RowMenu items={withDetails(storeMenu(r, { reload, open }), open)} label={`Actions for ${r.name}`} />
                       </View>
                       <StatusCell row={r} onResend={() => storeActions.resend(r, reload)} />
                       <Text style={h.cellMuted} numberOfLines={1}>{r.managerEmail}</Text>
@@ -303,7 +304,7 @@ export default function OwnerHome() {
                         <View style={h.mStat}><Text style={h.mLabel}>LAST PAYMENT</Text><Text style={h.cell}>{early || !r.lastPaymentAt ? '—' : fmtDate(r.lastPaymentAt)}</Text></View>
                       </View>
                       {!early && !!r.packageName && <CreditsBar used={r.creditsUsed} total={r.creditsTotal} />}
-                    </TouchableOpacity>
+                    </Pressable>
                   )
                 })}
               </View>
@@ -333,21 +334,18 @@ export default function OwnerHome() {
 
 const h = StyleSheet.create({
   page: { padding: Space.base, paddingTop: Space.lg, gap: Space.base, paddingBottom: Space.xxl },
-  pageWide: { padding: Space.xl, maxWidth: 1400, width: '100%', alignSelf: 'center' },
-  head: { flexDirection: 'row', alignItems: 'flex-end', gap: Space.md },
-  eyebrow: { ...Typography.label, color: Colors.primary, letterSpacing: 2 },
-  title: { ...Typography.h1 },
+  pageWide: { padding: Space.xl, maxWidth: Layout.wide + 64, width: '100%', alignSelf: 'center', gap: Space.lg },
 
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
   card: {
-    flexGrow: 1, flexBasis: 160, minWidth: 150, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Space.base,
-    borderWidth: 1.5, borderColor: Colors.borderSubtle,
+    flexGrow: 1, flexBasis: 160, minWidth: 150, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Space.lg,
+    borderWidth: 1.5, borderColor: Colors.borderSubtle, gap: 2,
   },
-  cardOn: { borderColor: Colors.secondary },
-  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardLabel: { ...Typography.label, fontSize: 9, flex: 1 },
-  cardValue: { ...Typography.h1, fontSize: 30, lineHeight: 38, marginTop: Space.xs },
-  cardSub: { ...Typography.caption, color: Colors.textMuted },
+  cardOn: { borderColor: Colors.secondary, ...Shadow.card },
+  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space.sm },
+  cardLabel: { ...Typography.label, fontSize: 10, flex: 1 },
+  cardValue: { ...Typography.numeral, fontSize: 36, lineHeight: 44, marginTop: Space.sm },
+  cardSub: { ...Typography.caption },
 
   tableCard: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.borderSubtle, overflow: 'hidden' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, padding: Space.base, paddingBottom: Space.sm, flexWrap: 'wrap' },
@@ -359,19 +357,21 @@ const h = StyleSheet.create({
   chips: { gap: Space.sm, paddingHorizontal: Space.base, paddingBottom: Space.sm },
   count: { ...Typography.caption, color: Colors.textMuted, paddingHorizontal: Space.base, paddingBottom: Space.sm },
 
-  tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Space.base, paddingVertical: Space.md, borderTopWidth: 1, borderTopColor: Colors.borderSubtle, gap: Space.sm },
+  tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Space.lg, paddingVertical: Space.md, borderTopWidth: 1, borderTopColor: Colors.borderSubtle, gap: Space.sm },
+  trHover: { backgroundColor: Colors.bg },
   thead: { paddingVertical: Space.sm, backgroundColor: Colors.bgSubtle },
   th: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   thText: { ...Typography.label, fontSize: 9 },
   td: { justifyContent: 'center' },
   cell: { ...Typography.bodySmall },
-  cellStrong: { ...Typography.bodySmall, fontWeight: '700' },
-  cellMuted: { ...Typography.caption, color: Colors.textFaint },
-  flag: { ...Typography.caption, color: Colors.error, fontWeight: '700', textDecorationLine: 'underline' },
+  cellStrong: { ...Typography.bodySmall, ...Weight.semibold },
+  mName: { ...Typography.h3, fontSize: 16 },
+  cellMuted: { ...Typography.caption, color: Colors.textMuted },
+  flag: { ...Typography.caption, ...Weight.semibold, color: Colors.error, textDecorationLine: 'underline' },
   track: { height: 4, borderRadius: 2, backgroundColor: Colors.secondarySubtle, overflow: 'hidden', maxWidth: 140 },
-  fill: { height: 4, backgroundColor: Colors.secondary },
+  fill: { height: 4, backgroundColor: Colors.secondary, borderRadius: 2 },
 
-  mCard: { borderWidth: 1, borderColor: Colors.borderSubtle, borderRadius: Radius.md, padding: Space.md, gap: Space.sm, backgroundColor: Colors.bg },
+  mCard: { borderWidth: 1, borderColor: Colors.borderSubtle, borderRadius: Radius.lg, padding: Space.base, gap: Space.sm, backgroundColor: Colors.bgCard },
   mHead: { flexDirection: 'row', alignItems: 'flex-start', gap: Space.sm },
   mStats: { flexDirection: 'row', gap: Space.md },
   mStat: { flex: 1, gap: 2 },

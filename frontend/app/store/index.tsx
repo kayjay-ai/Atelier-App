@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, Image, StyleSheet, ActivityIndicator,
 } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
 import { useAccountStore, usableCredits } from '../../lib/account'
@@ -13,8 +13,10 @@ import { pickImageDataUri } from '../../lib/imageInput'
 import { isFallback, isRetryable } from '../../lib/aiOutcome'
 import { runTryOnAttempt } from '../../lib/tryOnAttempt'
 import { downloadImage, shareImage } from '../../lib/shareImage'
-import { Colors, Typography, Space, Radius, Shadow } from '../../lib/theme'
-import { Icon, PillButton } from '../../lib/ui'
+import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
+import {
+  Card, Field, Icon, Initials, Notice, Page, PillButton, SectionHeader, Segmented, Skeleton, Tag, TextLink, displayProps,
+} from '../../lib/ui'
 import { CustomerPicker } from '../../components/store/CustomerPicker'
 import type { CustomerFolder, SizeResult } from '../../lib/types'
 
@@ -234,49 +236,210 @@ export default function StoreHomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <ScrollView contentContainerStyle={s.scroll}>
+      <Page width="app">
 
         {/* ── Primary actions ── */}
         <View style={s.actionRow}>
-          <TouchableOpacity style={[s.bigAction, s.bigDark]} onPress={() => router.push('/store/new-customer')}>
-            <Icon name="newCustomer" size={36} color={Colors.textOnDark} />
-            <Text style={[s.bigTitle, { color: Colors.textOnDark }]}>New customer</Text>
-            <Text style={[s.bigHint, { color: 'rgba(250,248,245,0.7)' }]}>Create a folder and take their photo</Text>
+          <TouchableOpacity style={[s.bigAction, s.bigDark]} onPress={() => router.push('/store/new-customer')} activeOpacity={0.88} accessibilityRole="button">
+            <View style={[s.bigIcon, s.bigIconDark]}><Icon name="newCustomer" size={26} color={Colors.textOnDark} /></View>
+            <View style={{ gap: Space.xs }}>
+              <Text {...displayProps(28)} style={[s.bigTitle, { color: Colors.textOnDark }]}>New customer</Text>
+              <Text style={[s.bigHint, { color: Colors.textOnDarkMuted }]}>Create their folder and take their photo</Text>
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity style={s.bigAction} onPress={() => uploadGarment()}>
-            <Icon name="gallery" size={36} color={Colors.secondary} />
-            <Text style={s.bigTitle}>Upload garment</Text>
-            <Text style={s.bigHint}>Pick the piece from this iPad's gallery</Text>
+          <TouchableOpacity style={s.bigAction} onPress={() => uploadGarment()} activeOpacity={0.88} accessibilityRole="button">
+            <View style={s.bigIcon}><Icon name="gallery" size={26} color={Colors.secondary} /></View>
+            <View style={{ gap: Space.xs }}>
+              <Text {...displayProps(28)} style={s.bigTitle}>Upload garment</Text>
+              <Text style={s.bigHint}>Pick the piece from this iPad’s gallery</Text>
+            </View>
           </TouchableOpacity>
         </View>
-        {actionError && <View style={s.errorBox}><Text style={s.errorText}>{actionError}</Text></View>}
+        {actionError && <Notice tone="error" text={actionError} onClose={() => setActionError(null)} />}
+
+        {/* ── Garment + actions ── */}
+        {garment && (
+          <Card variant="raised" style={s.work}>
+            <View style={s.workRow}>
+              <View style={s.workCol}>
+                <Text style={s.colLabel}>GARMENT</Text>
+                <Image source={{ uri: garment.dataUri }} style={s.workImg} resizeMode="contain" accessibilityLabel="The garment" />
+                <Field
+                  value={garment.name ?? ''}
+                  onChangeText={(t) => setGarment({ ...garment, name: t })}
+                  placeholder="Product or brand (optional)"
+                  containerStyle={{ marginTop: 0 }}
+                  accessibilityLabel="Product or brand"
+                />
+              </View>
+              <View style={s.workCol}>
+                <Text style={s.colLabel}>{customer ? customer.customerName.toUpperCase() : 'CUSTOMER'}</Text>
+                {customer ? (
+                  customer.photoUrl
+                    ? <Image source={{ uri: customer.photoUrl }} style={s.workImg} resizeMode="contain" accessibilityLabel={customer.customerName} />
+                    : <View style={[s.workImg, s.workEmpty]}><Initials name={customer.customerName} size={44} /><Text style={s.muted}>No photo yet</Text></View>
+                ) : (
+                  <TouchableOpacity style={[s.workImg, s.workEmpty, s.choose]} onPress={() => setPickerOpen(true)} accessibilityRole="button" accessibilityLabel="Choose customer">
+                    <Icon name="profile" size={32} color={Colors.primaryDark} />
+                    <Text style={s.chooseText}>Choose customer</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {phase === 'idle' && !customer && (
+              <View style={s.stack}>
+                <PillButton label="Choose customer" icon="profile" onPress={() => setPickerOpen(true)} />
+                <PillButton label="Remove garment" variant="ghost" size="sm" onPress={removeGarment} style={{ alignSelf: 'center' }} />
+              </View>
+            )}
+
+            {phase === 'idle' && customer && (
+              <View style={s.stack}>
+                {features.tryon && (
+                  outOfCredits ? (
+                    <Notice tone="error" title="Credits used up" text="Upgrade your plan or add top-up credits to keep trying on."
+                      actionLabel="Open Plan & Credits" onAction={() => router.navigate('/store/plan')} />
+                  ) : (
+                    <PillButton variant="primary" label="Try It On · 1 credit" icon="tryOn" onPress={generate} />
+                  )
+                )}
+                {features.size && sizeState === 'idle' && (
+                  <PillButton variant="outline" label="Size Assist" icon="size" onPress={() => runSize(customer, null)} />
+                )}
+                <View style={s.linkRow}>
+                  <TextLink label="Change customer" tone="muted" onPress={() => setPickerOpen(true)} />
+                  <TextLink label="Remove garment" tone="muted" onPress={removeGarment} />
+                </View>
+              </View>
+            )}
+
+            {phase === 'generating' && customer && (
+              <View style={s.generating} accessibilityLiveRegion="polite">
+                <ActivityIndicator color={Colors.primaryDark} />
+                <Text style={s.narration}>Draping the garment to {firstName(customer.customerName)}’s proportions…</Text>
+                <Text style={s.muted}>This takes 15–30 seconds.</Text>
+              </View>
+            )}
+
+            {phase === 'failed' && failure && (
+              <View style={s.stack}>
+                <Notice tone="error" text={failure.message} />
+                {failure.toPlan ? (
+                  <PillButton label="Open Plan & Credits" onPress={() => router.navigate('/store/plan')} />
+                ) : customer && !customer.photoPath ? (
+                  <PillButton label={`Open ${firstName(customer.customerName)}’s folder`} onPress={() => router.push(`/store/customer/${customer.id}`)} />
+                ) : (
+                  <PillButton label="Try again" icon="refresh" onPress={generate} />
+                )}
+              </View>
+            )}
+          </Card>
+        )}
+
+        {/* ── Result ── */}
+        {phase === 'generating' && (
+          <Card variant="raised" style={s.resultCard}>
+            <View style={s.resultHead}><Tag label="AI try-on" tone="dark" /></View>
+            <View style={s.resultImg}>
+              <Skeleton height="100%" radius={Radius.lg} style={StyleSheet.absoluteFill} />
+            </View>
+          </Card>
+        )}
+        {phase === 'result' && resultImage && customer && garment && (
+          <Card variant="raised" style={s.resultCard}>
+            <View style={s.resultHead}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Space.sm, flex: 1, minWidth: 200 }}>
+                <Tag label="AI try-on" tone="dark" />
+                <Text style={s.resultFor} numberOfLines={1}>for {customer.customerName}</Text>
+              </View>
+              <Segmented
+                options={[{ value: 'tryon', label: 'Try-on' }, { value: 'original', label: 'Original' }] as const}
+                value={showOriginal ? 'original' : 'tryon'} onChange={(v) => setShowOriginal(v === 'original')} size="sm"
+                style={{ minWidth: 220 }}
+              />
+            </View>
+            <Image
+              source={{ uri: showOriginal ? (customer.photoUrl ?? resultImage) : resultImage }}
+              style={s.resultImg}
+              resizeMode="contain"
+              accessibilityLabel={showOriginal ? `${customer.customerName}’s photo` : `${customer.customerName} wearing the garment`}
+            />
+            {resultId
+              ? <View style={s.saved}><Icon name="success" size={16} color={Colors.success} /><Text style={s.savedText}>Saved to {customer.customerName}’s folder</Text></View>
+              : saveError
+                ? <Notice tone="error" text={saveError} actionLabel="Retry" onAction={() => saveResult(resultImage)} />
+                : <Text style={[s.muted, { textAlign: 'center' }]}>Saving to the folder…</Text>}
+
+            <View style={s.btnRow}>
+              <PillButton label="Share" icon="share" size="md" style={s.flexBtn}
+                onPress={() => shareImage(resultImage, resultName, `${customer.customerName} — Atelier try-on`).then(() => reportShared(customer.id, 'share')).catch((e) => setActionError(e?.message ?? 'Could not share.'))} />
+              <PillButton variant="outline" label="Download" icon="download" size="md" style={s.flexBtn}
+                onPress={() => downloadImage(resultImage, resultName).then(() => reportShared(customer.id, 'download')).catch((e) => setActionError(e?.message ?? 'Could not download.'))} />
+            </View>
+            <View style={s.btnRow}>
+              <PillButton variant="outline" label="Try another garment" icon="gallery" size="md" style={s.flexBtn} onPress={tryAnotherGarment} />
+              {features.size && sizeState === 'idle' && (
+                <PillButton variant="outline" label="Size Assist" icon="size" size="md" style={s.flexBtn} onPress={() => runSize(customer, resultId)} />
+              )}
+            </View>
+          </Card>
+        )}
+
+        {/* ── Size Assist ── */}
+        {sizeState !== 'idle' && customer && (
+          <Card style={s.stack}>
+            <Text style={s.colLabel}>SIZE ASSIST · {customer.customerName.toUpperCase()}</Text>
+            {sizeState === 'loading' && (
+              <View style={s.generating}>
+                <ActivityIndicator color={Colors.primaryDark} />
+                <Text style={s.narration}>Reading the size chart and fabric…</Text>
+              </View>
+            )}
+            {sizeState === 'needsMeasurements' && (
+              <View style={s.stack}>
+                <Text style={s.body}>{customer.customerName} has no measurements yet. Add them to their folder, then run Size Assist again.</Text>
+                <PillButton label="Add measurements" icon="edit" onPress={() => router.push(`/store/customer/${customer.id}`)} />
+              </View>
+            )}
+            {sizeState === 'error' && (
+              <View style={s.stack}>
+                <Notice tone="error" text={sizeError ?? 'Size Assist is unavailable right now.'} />
+                <PillButton label="Try again" icon="refresh" onPress={() => runSize(customer, resultId)} />
+              </View>
+            )}
+            {sizeState === 'done' && sizeResult && (
+              <View style={s.sizeRow}>
+                <Text style={s.sizeBig}>{sizeResult.size}</Text>
+                <View style={{ flex: 1, gap: Space.sm, minWidth: 220 }}>
+                  <Text style={s.body}>{sizeResult.explanation}</Text>
+                  {!!sizeResult.caveat && <Text style={s.muted}>{sizeResult.caveat}</Text>}
+                  {sizeResult.confidence === 'low' && (
+                    <Notice tone="warning" text="Size and fabric aren’t clear on this image. A photo with the size label gives a reliable call." />
+                  )}
+                </View>
+              </View>
+            )}
+          </Card>
+        )}
 
         {/* ── Recent customers ── */}
         <View style={s.section}>
-          <View style={s.sectionHead}>
-            <Text style={s.sectionLabel}>RECENT CUSTOMERS</Text>
-            {folders.length > 0 && (
-              <TouchableOpacity onPress={() => router.navigate('/store/customers')}>
-                <Text style={s.seeAll}>See all</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <SectionHeader title="Recent customers" detail="Folders are kept for 15 days"
+            action={folders.length > 0 ? { label: 'See all', onPress: () => router.navigate('/store/customers') } : undefined} />
           {foldersLoading ? (
-            <ActivityIndicator color={Colors.primary} />
+            <View style={s.strip}>{[0, 1, 2, 3].map((i) => <View key={i} style={s.chip}><Skeleton width={104} height={138} radius={Radius.md} /><Skeleton width={80} height={10} /></View>)}</View>
           ) : foldersError ? (
-            <View style={s.inlineError}>
-              <Text style={s.errorText}>Couldn't load customers.</Text>
-              <TouchableOpacity onPress={loadFolders}><Text style={s.retry}>Retry</Text></TouchableOpacity>
-            </View>
+            <Notice tone="error" text="Couldn’t load customers. Check the connection." actionLabel="Retry" onAction={loadFolders} />
           ) : folders.length === 0 ? (
-            <Text style={s.empty}>No customers yet — tap New customer to start.</Text>
+            <Card variant="sunken"><Text style={s.muted}>No customers yet. Tap New customer when someone walks in.</Text></Card>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip}>
               {folders.slice(0, 12).map((f) => (
-                <TouchableOpacity key={f.id} style={s.chip} onPress={() => router.push(`/store/customer/${f.id}`)}>
+                <TouchableOpacity key={f.id} style={s.chip} onPress={() => router.push(`/store/customer/${f.id}`)} accessibilityRole="button" accessibilityLabel={`Open ${f.customerName}’s folder`}>
                   {f.photoUrl
                     ? <Image source={{ uri: f.photoUrl }} style={s.chipImg} />
-                    : <View style={[s.chipImg, s.chipEmpty]}><Icon name="profile" size={24} color={Colors.textFaint} /></View>}
+                    : <View style={[s.chipImg, s.chipEmpty]}><Initials name={f.customerName} /></View>}
                   <Text style={s.chipName} numberOfLines={1}>{f.customerName}</Text>
                 </TouchableOpacity>
               ))}
@@ -284,171 +447,25 @@ export default function StoreHomeScreen() {
           )}
         </View>
 
-        {/* ── Garment + actions ── */}
-        {garment && (
-          <View style={[s.card, Shadow.card]}>
-            <View style={s.workRow}>
-              <View style={s.workCol}>
-                <Text style={s.colLabel}>GARMENT</Text>
-                <Image source={{ uri: garment.dataUri }} style={s.workImg} resizeMode="contain" />
-                <TextInput
-                  style={s.nameInput}
-                  value={garment.name ?? ''}
-                  onChangeText={(t) => setGarment({ ...garment, name: t })}
-                  placeholder="Product / brand (optional)"
-                  placeholderTextColor={Colors.textFaint}
-                />
-              </View>
-              {customer && (
-                <View style={s.workCol}>
-                  <Text style={s.colLabel}>{customer.customerName.toUpperCase()}</Text>
-                  {customer.photoUrl
-                    ? <Image source={{ uri: customer.photoUrl }} style={s.workImg} resizeMode="contain" />
-                    : <View style={[s.workImg, s.chipEmpty]}><Text style={s.empty}>No photo yet</Text></View>}
-                </View>
-              )}
-            </View>
-
-            {phase === 'idle' && !customer && (
-              <View style={{ gap: Space.md }}>
-                <PillButton variant="secondary" label="Choose customer" icon="profile" onPress={() => setPickerOpen(true)} />
-                <TouchableOpacity style={s.textBtn} onPress={removeGarment}>
-                  <Text style={s.textBtnText}>Remove garment</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {phase === 'idle' && customer && (
-              <View style={{ gap: Space.md }}>
-                {features.tryon && (
-                  outOfCredits ? (
-                    <TouchableOpacity style={s.creditsOut} onPress={() => router.navigate('/store/plan')}>
-                      <Text style={s.creditsOutText}>Credits used up — upgrade plan or add credits →</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <PillButton variant="secondary" label="Try on · 1 credit" icon="tryOn" onPress={generate} />
-                  )
-                )}
-                {features.size && sizeState === 'idle' && (
-                  <PillButton variant="outline" label="Size Assist" icon="size" onPress={() => runSize(customer, null)} />
-                )}
-                <View style={s.linkRow}>
-                  <TouchableOpacity style={s.textBtn} onPress={() => setPickerOpen(true)}>
-                    <Text style={s.textBtnText}>Change customer</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={s.textBtn} onPress={removeGarment}>
-                    <Text style={s.textBtnText}>Remove garment</Text>
-                  </TouchableOpacity>
+        {/* ── How a try-on works: shown while nothing is in progress ── */}
+        {!garment && phase === 'idle' && (
+          <View style={s.steps}>
+            {[
+              ['New customer', 'Create their folder and photograph them, head to feet.'],
+              ['Upload garment', 'Pick the piece from this iPad’s gallery.'],
+              ['Try it on', 'Choose the customer. The result is saved to their folder.'],
+            ].map(([title, body], i) => (
+              <View key={title} style={s.step}>
+                <Text style={s.stepNum}>{i + 1}</Text>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={s.stepTitle}>{title}</Text>
+                  <Text style={s.muted}>{body}</Text>
                 </View>
               </View>
-            )}
-
-            {phase === 'generating' && customer && (
-              <View style={s.generating}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={s.narration}>Draping the garment to {firstName(customer.customerName)}'s proportions…</Text>
-                <Text style={s.empty}>This takes 15–30 seconds.</Text>
-              </View>
-            )}
-
-            {phase === 'failed' && failure && (
-              <View style={{ gap: Space.md }}>
-                <View style={s.errorBox}><Text style={s.errorText}>{failure.message}</Text></View>
-                {failure.toPlan ? (
-                  <PillButton variant="secondary" label="Go to Plan & Credits" onPress={() => router.navigate('/store/plan')} />
-                ) : customer && !customer.photoPath ? (
-                  <PillButton variant="secondary" label={`Open ${firstName(customer.customerName)}'s folder`} onPress={() => router.push(`/store/customer/${customer.id}`)} />
-                ) : (
-                  <PillButton variant="secondary" label="Try again" icon="refresh" onPress={generate} />
-                )}
-              </View>
-            )}
+            ))}
           </View>
         )}
-
-        {/* ── Result ── */}
-        {phase === 'result' && resultImage && customer && garment && (
-          <View style={[s.card, Shadow.card]}>
-            <View style={s.resultHead}>
-              <Text style={s.badge}>AI TRY-ON</Text>
-              <Text style={s.resultFor}>for {customer.customerName}</Text>
-            </View>
-            <View style={s.toggle}>
-              {(['Try-On', 'Original'] as const).map((label) => {
-                const on = (label === 'Original') === showOriginal
-                return (
-                  <TouchableOpacity key={label} style={[s.toggleBtn, on && s.toggleOn]} onPress={() => setShowOriginal(label === 'Original')}>
-                    <Text style={[s.toggleText, on && s.toggleTextOn]}>{label}</Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
-            <Image
-              source={{ uri: showOriginal ? (customer.photoUrl ?? resultImage) : resultImage }}
-              style={s.resultImg}
-              resizeMode="contain"
-            />
-            {resultId
-              ? <Text style={s.saved}>✓ Saved to {customer.customerName}'s folder</Text>
-              : saveError
-                ? (
-                  <View style={s.inlineError}>
-                    <Text style={s.errorText}>{saveError}</Text>
-                    <TouchableOpacity onPress={() => saveResult(resultImage)}><Text style={s.retry}>Retry</Text></TouchableOpacity>
-                  </View>
-                )
-                : <Text style={s.empty}>Saving to folder…</Text>}
-
-            <View style={s.btnRow}>
-              <PillButton variant="secondary" label="Share" icon="share" style={{ flex: 1 }}
-                onPress={() => shareImage(resultImage, resultName, `${customer.customerName} — Atelier try-on`).then(() => reportShared(customer.id, 'share')).catch((e) => setActionError(e?.message ?? 'Could not share.'))} />
-              <PillButton variant="outline" label="Download" icon="download" style={{ flex: 1 }}
-                onPress={() => downloadImage(resultImage, resultName).then(() => reportShared(customer.id, 'download')).catch((e) => setActionError(e?.message ?? 'Could not download.'))} />
-            </View>
-            <View style={s.btnRow}>
-              <PillButton variant="outline" label="Try another garment" icon="gallery" style={{ flex: 1 }} onPress={tryAnotherGarment} />
-              {features.size && sizeState === 'idle' && (
-                <PillButton variant="outline" label="Size Assist" icon="size" style={{ flex: 1 }} onPress={() => runSize(customer, resultId)} />
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* ── Size Assist ── */}
-        {sizeState !== 'idle' && customer && (
-          <View style={[s.card, Shadow.card]}>
-            <Text style={s.sectionLabel}>SIZE ASSIST · {customer.customerName.toUpperCase()}</Text>
-            {sizeState === 'loading' && (
-              <View style={s.generating}>
-                <ActivityIndicator color={Colors.primary} />
-                <Text style={s.narration}>Reading the size chart and fabric…</Text>
-              </View>
-            )}
-            {sizeState === 'needsMeasurements' && (
-              <View style={{ gap: Space.md }}>
-                <Text style={s.confirmText}>{customer.customerName} has no measurements yet. Add them to their folder, then run Size Assist again.</Text>
-                <PillButton variant="secondary" label="Add measurements" onPress={() => router.push(`/store/customer/${customer.id}`)} />
-              </View>
-            )}
-            {sizeState === 'error' && (
-              <View style={{ gap: Space.md }}>
-                <View style={s.errorBox}><Text style={s.errorText}>{sizeError}</Text></View>
-                <PillButton variant="secondary" label="Try again" icon="refresh" onPress={() => runSize(customer, resultId)} />
-              </View>
-            )}
-            {sizeState === 'done' && sizeResult && (
-              <View style={{ gap: Space.sm }}>
-                <Text style={s.sizeBig}>{sizeResult.size}</Text>
-                <Text style={s.confirmText}>{sizeResult.explanation}</Text>
-                {sizeResult.caveat && <Text style={s.empty}>{sizeResult.caveat}</Text>}
-                {sizeResult.confidence === 'low' && (
-                  <Text style={s.warn}>Size and fabric not clearly visible on this image — use a garment photo with the size label for a reliable call.</Text>
-                )}
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
+      </Page>
 
       <CustomerPicker
         visible={pickerOpen}
@@ -463,69 +480,59 @@ export default function StoreHomeScreen() {
 }
 
 const s = StyleSheet.create({
-  scroll: { padding: Space.lg, paddingBottom: Space.xxl, gap: Space.lg, maxWidth: 960, width: '100%', alignSelf: 'center' },
-
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.base },
   bigAction: {
-    flexGrow: 1, flexBasis: 260, minHeight: 150, gap: Space.sm, justifyContent: 'center',
+    flexGrow: 1, flexBasis: 280, minHeight: 168, gap: Space.lg, justifyContent: 'space-between',
     backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Space.lg,
-    borderWidth: 1.5, borderColor: Colors.border,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  bigDark: { backgroundColor: Colors.secondary, borderColor: Colors.secondary },
-  bigTitle: { ...Typography.h2 },
+  bigDark: { backgroundColor: Colors.bgDark, borderColor: Colors.bgDark },
+  bigIcon: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bgSubtle },
+  bigIconDark: { backgroundColor: 'rgba(250,248,245,0.10)' },
+  bigTitle: { ...Typography.h2, fontSize: 28, lineHeight: 34 },
   bigHint: { ...Typography.bodySmall, color: Colors.textMuted },
 
-  section: { gap: Space.sm },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionLabel: { ...Typography.label },
-  seeAll: { ...Typography.bodySmall, fontWeight: '600', color: Colors.secondary },
-  strip: { gap: Space.md },
-  chip: { width: 96, gap: Space.xs },
-  chipImg: { width: 96, height: 128, borderRadius: Radius.md, backgroundColor: Colors.bgSubtle },
+  section: { gap: Space.base },
+  strip: { gap: Space.md, flexDirection: 'row' },
+  chip: { width: 104, gap: Space.sm },
+  chipImg: { width: 104, height: 138, borderRadius: Radius.md, backgroundColor: Colors.bgSubtle },
   chipEmpty: { alignItems: 'center', justifyContent: 'center' },
-  chipName: { ...Typography.caption, color: Colors.text, textAlign: 'center' },
+  chipName: { ...Typography.caption, ...Weight.medium, color: Colors.text, textAlign: 'center' },
 
-  card: { backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Space.lg, gap: Space.md },
-  workRow: { flexDirection: 'row', gap: Space.md },
-  workCol: { flex: 1, gap: Space.sm },
+  work: { padding: Space.lg, gap: Space.lg },
+  workRow: { flexDirection: 'row', gap: Space.base },
+  workCol: { flex: 1, minWidth: 0, gap: Space.sm },
   colLabel: { ...Typography.label },
-  workImg: { width: '100%', aspectRatio: 3 / 4, borderRadius: Radius.md, backgroundColor: Colors.bgSubtle },
-  nameInput: {
-    backgroundColor: Colors.bgSubtle, borderRadius: Radius.md, paddingHorizontal: Space.md,
-    paddingVertical: 10, ...Typography.bodySmall, color: Colors.text,
-  },
+  workImg: { width: '100%', aspectRatio: 3 / 4, borderRadius: Radius.lg, backgroundColor: Colors.bgSubtle },
+  workEmpty: { alignItems: 'center', justifyContent: 'center', gap: Space.sm },
+  choose: { borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.primary, backgroundColor: Colors.primarySubtle },
+  chooseText: { ...Typography.bodySmall, ...Weight.semibold, color: Colors.secondary },
 
-  confirmText: { ...Typography.body },
+  stack: { gap: Space.md },
+  body: { ...Typography.body },
+  muted: { ...Typography.bodySmall, color: Colors.textMuted },
   btnRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.md },
+  flexBtn: { flexGrow: 1, flexBasis: 180 },
   linkRow: { flexDirection: 'row', justifyContent: 'center', gap: Space.xl },
-  textBtn: { alignItems: 'center', paddingVertical: Space.xs },
-  textBtnText: { ...Typography.caption, color: Colors.textFaint },
-  creditsOut: { backgroundColor: Colors.errorBg, borderRadius: Radius.full, paddingVertical: 16, alignItems: 'center' },
-  creditsOutText: { ...Typography.body, fontWeight: '600', color: Colors.error },
 
   generating: { alignItems: 'center', gap: Space.sm, paddingVertical: Space.lg },
   narration: { ...Typography.h3, textAlign: 'center' },
 
-  resultHead: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
-  badge: {
-    ...Typography.label, color: Colors.textOnDark, backgroundColor: Colors.secondary,
-    paddingHorizontal: Space.sm, paddingVertical: 4, borderRadius: Radius.sm, overflow: 'hidden',
+  resultCard: { padding: Space.lg, gap: Space.base },
+  resultHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Space.md },
+  resultFor: { ...Typography.h3, flexShrink: 1 },
+  resultImg: { width: '100%', aspectRatio: 3 / 4, maxHeight: 760, borderRadius: Radius.lg, backgroundColor: Colors.bgSubtle, overflow: 'hidden' },
+  saved: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Space.xs },
+  savedText: { ...Typography.bodySmall, ...Weight.medium, color: Colors.success },
+
+  sizeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Space.lg },
+  sizeBig: { ...Typography.numeral, fontSize: 64, lineHeight: 70 },
+
+  steps: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.base, borderTopWidth: 1, borderTopColor: Colors.borderSubtle, paddingTop: Space.lg },
+  step: { flexBasis: 240, flexGrow: 1, flexDirection: 'row', gap: Space.md, alignItems: 'flex-start' },
+  stepNum: {
+    width: 30, height: 30, borderRadius: 15, textAlign: 'center', lineHeight: 30, overflow: 'hidden',
+    backgroundColor: Colors.secondary, color: Colors.textOnDark, ...Weight.semibold, fontSize: 13,
   },
-  resultFor: { ...Typography.h3 },
-  toggle: { flexDirection: 'row', alignSelf: 'flex-start', backgroundColor: Colors.bgSubtle, borderRadius: Radius.full, padding: 3 },
-  toggleBtn: { paddingHorizontal: Space.base, paddingVertical: 6, borderRadius: Radius.full },
-  toggleOn: { backgroundColor: Colors.secondary },
-  toggleText: { ...Typography.bodySmall, fontWeight: '600' },
-  toggleTextOn: { color: Colors.textOnDark },
-  resultImg: { width: '100%', aspectRatio: 3 / 4, borderRadius: Radius.md, backgroundColor: Colors.bgSubtle },
-  saved: { ...Typography.bodySmall, color: Colors.success },
-
-  sizeBig: { ...Typography.display, fontSize: 48, lineHeight: 56, color: Colors.secondary },
-  warn: { ...Typography.bodySmall, color: Colors.warning },
-
-  empty: { ...Typography.bodySmall, color: Colors.textMuted },
-  errorBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.sm, padding: Space.md },
-  errorText: { ...Typography.bodySmall, color: Colors.error },
-  inlineError: { flexDirection: 'row', alignItems: 'center', gap: Space.md },
-  retry: { ...Typography.bodySmall, fontWeight: '700', color: Colors.secondary },
+  stepTitle: { ...Typography.bodySmall, ...Weight.semibold },
 })
