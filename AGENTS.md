@@ -15,6 +15,7 @@ One npm workspace (root `package.json`, one `package-lock.json`). See `README.md
   Get the caller with `callerOf(req)` (`lib/identity.mjs`), never by calling `getUserFromRequest`/`getClientContext` in a route.
   AI routes follow the steps in `routes/ai.mjs`: gate, validate, reserve credits (`lib/spend.mjs`), ask (`lib/ai.mjs`), answer or mark a stand-in and refund.
   Feature names, toggles and costs live only in `lib/features.mjs`. Payments go through `lib/payments.mjs`.
+  Every email goes through `sendEmail()` in `lib/email.mjs` (Resend, else SMTP); a one-time code is never returned to the app.
   A module must not change the environment when imported (no `dotenv` outside `index.mjs`).
 - `supabase/`: SQL migrations and schema snapshots. There is no runner: paste a migration into the Supabase SQL editor to apply it.
   Migrations must be idempotent, and backend code must tolerate a migration that isn't applied yet.

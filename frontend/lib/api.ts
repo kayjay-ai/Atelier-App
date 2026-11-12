@@ -272,6 +272,29 @@ export async function deleteAccount(): Promise<void> {
   }
 }
 
+/**
+ * Forgot password (shoppers and store logins): emails a one-time code. The
+ * reply is the same whether or not the email has an account. Then
+ * supabase.auth.verifyOtp({ type: 'recovery' }) + updateUser({ password }).
+ * Throws ApiError (code 'cooldown' carries extra.retryInSec).
+ */
+export async function requestPasswordReset(email: string): Promise<{ sent: true; resendInSec: number }> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/api/auth/password-reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+    })
+  } catch {
+    throw new ApiError(0, 'Can’t reach Atelier right now. Check your connection and try again.', 'network', {})
+  }
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const { error: _error, code, ...extra } = json ?? {}
+    throw new ApiError(res.status, errorText(json) || `Server error ${res.status}`, typeof code === 'string' ? code : null, extra)
+  }
+  return { sent: true, resendInSec: Number(json?.resendInSec) || 60 }
+}
+
 // ─── B2B payments (Cashfree) ─────────────────────────────────────────────────
 // The server decides prices, credits and what this store may buy; the app only
 // names the item, confirms the Terms, and asks the server to verify afterwards.
@@ -420,8 +443,7 @@ async function ownerCall<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: s
 
 export type OwnerPurpose = 'activation' | 'reset'
 export interface OwnerSessionTokens { accessToken: string; refreshToken: string; expiresAt: number; sessionExpiresAt: string }
-/** testCode: only in the API's temporary test mode (email not set up) — shown on screen instead of emailed. */
-export interface CodeSent { maskedEmail: string; resendInSec: number; expiresInSec: number; testCode?: string }
+export interface CodeSent { maskedEmail: string; resendInSec: number; expiresInSec: number }
 
 export const ownerVerify = (orgCode: string, email: string, purpose: OwnerPurpose) =>
   ownerCall<CodeSent>('POST', purpose === 'reset' ? '/api/owner/forgot' : '/api/owner/activate/verify', { org_code: orgCode, email }, false)
@@ -519,8 +541,7 @@ export interface AddStoreInput {
   managerPhone: string
   note: string
 }
-/** testInviteUrl: only in the API's temporary test mode (email not set up) — the link to pass on by hand. */
-type InviteResult = { store: OwnerStoreRow; emailStatus: 'sent' | 'failed' | 'skipped'; testInviteUrl?: string }
+type InviteResult = { store: OwnerStoreRow; emailStatus: 'sent' | 'failed' | 'skipped' }
 
 export const fetchOwnerSummary = () => ownerCall<OwnerSummary>('GET', '/api/owner/dashboard/summary')
 export function fetchOwnerStores(q: OwnerStoreQuery): Promise<OwnerStorePage> {

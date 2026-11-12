@@ -6,7 +6,6 @@ import { INDIAN_STATES, ownerErrorText } from '../../../lib/owner'
 import { Colors, Typography, Space } from '../../../lib/theme'
 import { PageHeader } from '../../../lib/ui'
 import { Banner, Btn, Card, Field, SelectField, toast, WIDE } from '../../../components/owner/kit'
-import { showTestInvite } from '../../../components/owner/storeActions'
 
 // ─── Add Store: one form creates the store and invites its manager ────────────
 // The store appears on Home straight away as Invited. Duplicate rules (flow doc):
@@ -71,11 +70,7 @@ export default function AddStore() {
       const r = await addOwnerStore({ ...form, managerEmail: form.managerEmail.trim() })
       const email = r.store.managerEmail
       clear()
-      if (await showTestInvite(r.testInviteUrl, email)) {
-        toast(`${r.store.name} is now on your dashboard.`, {
-          action: { label: 'View on dashboard', onPress: () => router.navigate('/owner/home') }, ms: 9000,
-        })
-      } else if (r.emailStatus === 'failed') {
+      if (r.emailStatus === 'failed') {
         toast(`${r.store.name} is on your dashboard, but the invite email to ${email} wasn’t delivered. Resend it from Home.`, {
           tone: 'error', action: { label: 'View on dashboard', onPress: () => router.navigate('/owner/home') }, ms: 9000,
         })
@@ -101,8 +96,6 @@ export default function AddStore() {
     if (!pendingStore) return
     try {
       const r = await resendStoreInvite(pendingStore)
-      clear()
-      if (await showTestInvite(r.testInviteUrl, r.store.managerEmail)) return
       toast(r.emailStatus === 'failed' ? 'The invite email wasn’t delivered. Try again in a few minutes.' : `Invite sent again to ${r.store.managerEmail}.`,
         { tone: r.emailStatus === 'failed' ? 'error' : 'success' })
       clear()

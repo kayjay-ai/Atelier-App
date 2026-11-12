@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 // change to this list (the deployed apps call these paths).
 const ROUTES = [
   'POST /api/payments/webhook', 'GET /', 'GET /api/health', 'GET /health',
-  'GET /api/credits', 'GET /api/membership', 'POST /api/events', 'POST /api/auth/account-type', 'POST /api/account/delete',
+  'GET /api/credits', 'GET /api/membership', 'POST /api/events', 'POST /api/auth/account-type', 'POST /api/auth/password-reset', 'POST /api/account/delete',
   'GET /api/payments/pricing', 'POST /api/payments/create', 'GET /api/payments/status/:orderId',
   'POST /api/embed/session', 'POST /api/embed/refresh', 'GET /api/embed/me', 'GET /api/embed/config',
   'GET /api/embed/history', 'POST /api/embed/history', 'GET /api/partner/users/:externalUserId/history',
@@ -73,4 +73,10 @@ test('signed-in-only routes refuse anonymous callers', async () => {
   assert.equal((await get(app.url, '/api/b2b/billing')).status, 401)
   assert.equal((await post(app.url, '/api/b2b/session', {})).status, 401)
   assert.equal((await post(app.url, '/api/account/delete', {})).status, 401)
+})
+
+test('password reset checks the email, then needs the database', async () => {
+  assert.equal((await post(app.url, '/api/auth/password-reset', { email: 'not-an-email' })).status, 400)
+  const r = await post(app.url, '/api/auth/password-reset', { email: 'someone@example.com' })
+  assert.equal(r.status, 503)
 })

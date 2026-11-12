@@ -76,22 +76,6 @@ test('notification preferences: defaults on; account can never be turned off', (
   assert.ok(!('bogus' in p.categories))
 })
 
-test('test mode (codes shown in the app) is on only while email is not set up', async () => {
-  const { emailBypass } = await import('../lib/email.mjs')
-  const saved = { k: process.env.RESEND_API_KEY, f: process.env.NOTIFY_FROM_EMAIL, b: process.env.OWNER_EMAIL_BYPASS }
-  try {
-    process.env.RESEND_API_KEY = ''; process.env.NOTIFY_FROM_EMAIL = ''; process.env.OWNER_EMAIL_BYPASS = ''
-    assert.equal(emailBypass(), true)
-    process.env.OWNER_EMAIL_BYPASS = 'false'
-    assert.equal(emailBypass(), false, 'can be switched off by hand')
-    process.env.OWNER_EMAIL_BYPASS = ''
-    process.env.RESEND_API_KEY = 're_x'; process.env.NOTIFY_FROM_EMAIL = 'a@b.com'
-    assert.equal(emailBypass(), false, 'off by itself once email is set up')
-  } finally {
-    process.env.RESEND_API_KEY = saved.k ?? ''; process.env.NOTIFY_FROM_EMAIL = saved.f ?? ''; process.env.OWNER_EMAIL_BYPASS = saved.b ?? ''
-  }
-})
-
 let app
 before(async () => { app = await startApp() })
 after(async () => { await app.close() })

@@ -83,19 +83,11 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
     router.replace('/owner/activate')
   }
 
-  // TEMPORARY test mode (the API has no email yet): the code is shown and filled
-  // in here instead of emailed. Gone once the server's email is set up.
-  function showTestCode(testCode?: string) {
-    setCode(testCode ?? '')
-    if (testCode) setInfo(`Test mode — email isn’t set up yet, so your code is ${testCode}. It’s filled in below; press Continue.`)
-  }
-
   async function verify() {
     setBusy(true); setProblem(null); setInfo(null)
     try {
       const r = await ownerVerify(orgCode.trim(), email.trim(), purpose)
-      setMasked(r.maskedEmail); setCooldown(r.resendInSec); setStep('code')
-      showTestCode(r.testCode)
+      setMasked(r.maskedEmail); setCooldown(r.resendInSec); setStep('code'); setCode('')
     } catch (e) {
       setProblem(problemOf(e))
     } finally {
@@ -109,7 +101,7 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
       const r = await ownerResendCode(email.trim(), purpose)
       setMasked(r.maskedEmail); setCooldown(r.resendInSec)
       setInfo('A new code is on its way. Older codes no longer work.')
-      showTestCode(r.testCode)
+      setCode('')
     } catch (e: any) {
       if (e instanceof ApiError && e.code === 'cooldown' && e.extra.retryInSec) setCooldown(Number(e.extra.retryInSec))
       if (e instanceof ApiError && e.code === 'restart') { backToDetails(problemOf(e)); return }

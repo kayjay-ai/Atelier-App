@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabaseClient'
 import { readAuthReturn } from '../lib/oauthReturn'
 import { useAccountStore, homeFor, isCompanyLogin } from '../lib/account'
 import { fetchProfile, upsertProfile } from '../lib/supabaseStorage'
-import { fetchOwnerMe } from '../lib/api'
+import { ApiError, fetchOwnerMe, requestPasswordReset } from '../lib/api'
 import { takePrefill } from '../lib/owner'
 import { Colors, Typography, Space, Radius, Weight } from '../lib/theme'
 import { Field, Icon, Loading, Notice, PasswordField, PillButton, TextLink } from '../lib/ui'
@@ -112,7 +112,11 @@ function showApple(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
 }
 
-type Mode = 'login' | 'signup' | 'verify'
+// forgot = ask for a reset code; reset = enter it with a new password
+// (POST /api/auth/password-reset emails a Supabase recovery code).
+type Mode = 'login' | 'signup' | 'verify' | 'forgot' | 'reset'
+
+const looksLikeEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
 
 export default function AuthScreen() {
   // ?as=company opens with Company › Store staff picked (the owner login's switch links here).
@@ -130,9 +134,19 @@ export default function AuthScreen() {
   const [kind, setKind]       = useState<AccountKind>(params.as === 'company' ? 'company' : 'personal')
   // Signed in, but this personal account has no date of birth yet.
   const [dobNeeded, setDobNeeded] = useState(false)
+  // Reset: the code was accepted (we hold a recovery session), only the password is left.
+  const [resetVerified, setResetVerified] = useState(false)
+  const [resendIn, setResendIn] = useState(0)
+
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const t = setTimeout(() => setResendIn((n) => n - 1), 1000)
+    return () => clearTimeout(t)
+  }, [resendIn])
 
   const company = kind === 'company'
-  const showDob = !company && mode !== 'verify'
+  const entry = mode === 'login' || mode === 'signup'
+  const showDob = !company && entry
   const dobTyped = !!(dob.day || dob.month || dob.year)
 
   /** The typed date of birth as YYYY-MM-DD; throws a friendly error if it's invalid. */
@@ -168,6 +182,7 @@ export default function AuthScreen() {
   function switchMode(next: Mode) {
     setMode(next); setError(null); setInfo(null); setCode('')
     if (next !== 'verify') setDobNeeded(false) // verify keeps the signup date of birth
+    if (next === 'forgot' || next === 'login') { setPassword(''); setResetVerified(false) }
   }
 
   // Company logins are created by Atelier, so Company is sign-in only.
@@ -202,6 +217,36 @@ export default function AuthScreen() {
         if (data.session) { await enterApp({ as: 'personal', dob: dateOfBirth }); return } // email confirmation switched off
         setMode('verify')
         setInfo(`We sent a verification code to ${email.trim()}.`)
+      } else if (mode === 'forgot') {
+        const target = email.trim()
+        if (!looksLikeEmail(target)) throw new Error('Enter the email you sign in with.')
+        const r = await requestPasswordReset(target)
+        setResendIn(r.resendInSec); setCode(''); setPassword(''); setResetVerified(false)
+        setMode('reset')
+        setInfo(`If ${target} has an Atelier account, a code is on its way. Check your inbox (and spam).`)
+      } else if (mode === 'reset') {
+        if (password.length < 8) throw new Error('Use at least 8 characters for your new password.')
+        if (!resetVerified) {
+          const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'recovery' })
+          if (error) {
+            throw new Error(/expired|invalid/i.test(error.message)
+              ? 'That code isn’t right or has expired. Check it, or send a new one.' : error.message)
+          }
+          setResetVerified(true)
+        }
+        const { error: upErr } = await supabase.auth.updateUser({ password })
+        if (upErr) {
+          throw new Error(upErr.code === 'same_password' || /different from the old/i.test(upErr.message)
+            ? 'Choose a password you haven’t used for this account.' : upErr.message)
+        }
+        try {
+          await enterApp({ as: kind })
+        } catch (e: any) {
+          // The password is changed either way; sign in again from the start.
+          setMode('login'); setPassword(''); setResetVerified(false)
+          setInfo('Your password was changed.')
+          throw e
+        }
       } else {
         const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'signup' })
         if (error) throw error
@@ -220,6 +265,19 @@ export default function AuthScreen() {
     const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() })
     if (error) setError(error.message)
     else setInfo('A new code is on its way.')
+  }
+
+  async function resendResetCode() {
+    if (resendIn > 0) return
+    setError(null); setInfo(null)
+    try {
+      const r = await requestPasswordReset(email.trim())
+      setResendIn(r.resendInSec); setCode(''); setResetVerified(false)
+      setInfo('A new code is on its way. Older codes no longer work.')
+    } catch (e: any) {
+      if (e instanceof ApiError && e.code === 'cooldown' && e.extra.retryInSec) setResendIn(Number(e.extra.retryInSec))
+      setError(e?.message ?? 'Couldn’t send a new code — please try again.')
+    }
   }
 
   async function signInWith(provider: 'google' | 'apple') {
@@ -268,9 +326,15 @@ export default function AuthScreen() {
 
   if (checking) return <Loading />
 
-  const title = company ? 'Store sign-in'
+  const title = mode === 'forgot' ? 'Reset your password'
+    : mode === 'reset' ? 'Choose a new password'
+    : company ? 'Store sign-in'
     : mode === 'login' ? 'Welcome back' : mode === 'signup' ? 'Create your account' : 'Check your email'
-  const subtitle = company
+  const subtitle = mode === 'forgot'
+    ? `Enter the email you sign in with${company ? ' (your store login)' : ''} and we’ll email you a code.`
+    : mode === 'reset'
+      ? `Enter the code we emailed to ${email.trim()}, then choose a new password.`
+    : company
     ? 'Use your store login: the email your owner invited, or the one Atelier set up. This opens your store app.'
     : mode === 'login'
       ? 'Sign in to see your fittings, style report and credits.'
@@ -284,7 +348,7 @@ export default function AuthScreen() {
       audience={company ? 'company' : 'personal'}
       title={title}
       subtitle={subtitle}
-      top={mode !== 'verify' ? (
+      top={entry ? (
         <AccountKindSwitch
           value={company ? 'store' : 'personal'}
           onChange={(role) => {
@@ -295,7 +359,7 @@ export default function AuthScreen() {
         />
       ) : undefined}
     >
-      {mode !== 'verify' && (
+      {entry && (
         <>
           <View style={s.oauth}>
             <PillButton
@@ -333,6 +397,12 @@ export default function AuthScreen() {
             autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             onSubmitEditing={submit}
           />
+          {mode === 'login' && (
+            <TextLink
+              label="Forgot password?" tone="muted" onPress={() => switchMode('forgot')}
+              style={{ alignSelf: 'flex-end', marginTop: Space.sm }}
+            />
+          )}
 
           {showDob && (
             <View style={[s.dob, dobNeeded && s.dobNeeded]}>
@@ -345,6 +415,35 @@ export default function AuthScreen() {
               <DateOfBirthField value={dob} onChange={setDob} />
             </View>
           )}
+        </>
+      )}
+
+      {mode === 'forgot' && (
+        <Field
+          label="Email" value={email} onChangeText={setEmail}
+          placeholder={company ? 'store@yourcompany.com' : 'you@example.com'}
+          keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email"
+          onSubmitEditing={submit} containerStyle={{ marginTop: Space.lg }}
+        />
+      )}
+
+      {mode === 'reset' && (
+        <>
+          <Field
+            label="Code from the email" value={code}
+            onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, 10)); setResetVerified(false) }}
+            placeholder="123456" keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode"
+            inputStyle={s.codeInput} containerStyle={{ marginTop: Space.lg }} editable={!resetVerified}
+          />
+          <TextLink
+            label={resendIn > 0 ? `Send a new code in ${resendIn}s` : 'Send a new code'} tone={resendIn > 0 ? 'muted' : 'ink'}
+            onPress={resendResetCode} style={{ alignSelf: 'flex-end', marginTop: Space.sm }}
+          />
+          <PasswordField
+            label="New password" value={password} onChangeText={setPassword}
+            placeholder="At least 8 characters" autoComplete="new-password" textContentType="newPassword"
+            onSubmitEditing={submit}
+          />
         </>
       )}
 
@@ -364,13 +463,22 @@ export default function AuthScreen() {
       {info && <Notice tone="success" text={info} style={s.notice} />}
 
       <PillButton
-        label={mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Verify and continue'}
-        onPress={submit} loading={loading} disabled={loading || (mode === 'verify' && code.length < 6)}
+        label={mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account'
+          : mode === 'forgot' ? 'Send code' : mode === 'reset' ? 'Set new password' : 'Verify and continue'}
+        onPress={submit} loading={loading}
+        disabled={loading || ((mode === 'verify' || mode === 'reset') && code.length < 6) || (mode === 'reset' && !password)}
         style={{ marginTop: Space.lg }}
       />
 
       <View style={s.footer}>
-        {mode === 'verify' ? (
+        {mode === 'forgot' || mode === 'reset' ? (
+          <Text style={s.footerText}>
+            {mode === 'reset' ? 'Wrong email? ' : 'Remembered it? '}
+            <Text style={s.footerLink} onPress={() => switchMode(mode === 'reset' ? 'forgot' : 'login')} accessibilityRole="link">
+              {mode === 'reset' ? 'Go back' : 'Sign in'}
+            </Text>
+          </Text>
+        ) : mode === 'verify' ? (
           <Text style={s.footerText}>Wrong email? <Text style={s.footerLink} onPress={() => switchMode('signup')} accessibilityRole="link">Go back</Text></Text>
         ) : company ? (
           <Text style={s.footerText}>

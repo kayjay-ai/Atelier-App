@@ -1,5 +1,5 @@
 import { serviceDb, isMissingSchema } from './db.mjs'
-import { sendEmail, emailBypass } from './email.mjs'
+import { sendEmail } from './email.mjs'
 import { allow } from './rateLimit.mjs'
 import { OwnerError, audit } from './ownerAuth.mjs'
 import { notifyOwner } from './ownerNotify.mjs'
@@ -52,11 +52,10 @@ const orgName = (c) => c.brand_name || c.company_name
 
 /**
  * Email delivery as stored on the invite: in production "not configured" counts
- * as not delivered — except in test mode (emailBypass), where the owner is
- * handed the link to share instead.
+ * as not delivered. Locally the email is printed to the API log ('skipped').
  */
 const deliveryOf = (r) => (r.status === 'sent' ? 'sent'
-  : r.status === 'skipped' && (process.env.NODE_ENV !== 'production' || emailBypass()) ? 'skipped' : 'failed')
+  : r.status === 'skipped' && process.env.NODE_ENV !== 'production' ? 'skipped' : 'failed')
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
@@ -342,9 +341,7 @@ async function issueInvite(ctx, store, { inviteId, managerName, managerEmail, ma
     if (emailStatus === 'failed') console.warn(`[Atelier] invite email for ${store.store_id} not delivered:`, sent.error)
   }
   await supabase.from('b2b_stores').update({ invited_at: now.toISOString() }).eq('store_id', store.store_id)
-  // Test mode: no email went out, so the owner gets the link to pass on.
-  const testInviteUrl = emailStatus === 'skipped' && emailBypass() ? inviteUrl(appBase, invite.id, invite.token_nonce) : undefined
-  return { inviteId: invite.id, emailStatus, ...(testInviteUrl ? { testInviteUrl } : {}) }
+  return { inviteId: invite.id, emailStatus }
 }
 
 export async function addStore(ctx, input, { appBase }) {
@@ -403,7 +400,7 @@ export async function addStore(ctx, input, { appBase }) {
     throw err
   }
   await audit(auditCtx(ctx), 'invite_sent', store.store_id, { email: v.managerEmail, emailStatus: sent.emailStatus })
-  return { store: toRow(await rowFor(ctx, store.store_id)), emailStatus: sent.emailStatus, testInviteUrl: sent.testInviteUrl }
+  return { store: toRow(await rowFor(ctx, store.store_id)), emailStatus: sent.emailStatus }
 }
 
 // ── Invite lifecycle and store actions ───────────────────────────────────────
@@ -421,7 +418,7 @@ export async function resendInvite(ctx, storeId, { appBase }) {
     managerName: r.manager_name || 'Store manager', managerEmail: normEmail(r.manager_email), managerPhone: r.manager_phone,
   }, appBase)
   await audit(auditCtx(ctx), 'invite_resent', storeId, { emailStatus: sent.emailStatus })
-  return { store: toRow(await rowFor(ctx, storeId)), emailStatus: sent.emailStatus, testInviteUrl: sent.testInviteUrl }
+  return { store: toRow(await rowFor(ctx, storeId)), emailStatus: sent.emailStatus }
 }
 
 export async function inviteLink(ctx, storeId, { appBase }) {
@@ -455,7 +452,7 @@ export async function changeInviteEmail(ctx, storeId, email, { appBase }) {
     inviteId: r.invite_id ?? undefined, managerName: r.manager_name || 'Store manager', managerEmail: e, managerPhone: r.manager_phone,
   }, appBase)
   await audit(auditCtx(ctx), 'invite_email_changed', storeId, { from: r.manager_email, to: e })
-  return { store: toRow(await rowFor(ctx, storeId)), emailStatus: sent.emailStatus, testInviteUrl: sent.testInviteUrl }
+  return { store: toRow(await rowFor(ctx, storeId)), emailStatus: sent.emailStatus }
 }
 
 /** Revoke (open invite) or Delete (expired invite): the never-activated store is removed. */

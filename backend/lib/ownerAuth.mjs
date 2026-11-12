@@ -1,5 +1,5 @@
 import { serviceDb, passwordAuthClient, isMissingSchema } from './db.mjs'
-import { sendEmail, emailBypass } from './email.mjs'
+import { sendEmail } from './email.mjs'
 import { allow } from './rateLimit.mjs'
 import { notifyOwner, prefsOf, cleanPrefs } from './ownerNotify.mjs'
 import {
@@ -137,22 +137,19 @@ async function issueCode(companyId, email, purpose) {
   const sent = await sendEmail({
     to: email,
     subject: reset ? 'Your Atelier password reset code' : 'Your Atelier verification code',
+    code,
     body: `Your code is ${code}. It expires in 10 minutes.\n\n` +
       (reset ? 'Use it to set a new password for your Atelier owner account.' : 'Use it to activate your Atelier owner account.') +
       '\n\nIf you didn’t ask for this, you can ignore this email — nothing changes without the code.',
   })
-  // Test mode (email not set up yet — lib/email.mjs emailBypass): the app shows the code.
-  const testCode = sent.status === 'skipped' && emailBypass() ? code : undefined
-  if (sent.status === 'failed' || (sent.status === 'skipped' && process.env.NODE_ENV === 'production' && !testCode)) {
+  // The code only ever travels by email. Locally, with no email set up, it's
+  // printed to the API log (lib/email.mjs) so the flow can still be tried.
+  if (sent.status !== 'sent' && !(sent.status === 'skipped' && process.env.NODE_ENV !== 'production')) {
     await supabase.from('b2b_owner_otps').update({ consumed_at: new Date().toISOString() }).eq('id', row.id)
     console.error('[Atelier] owner code email not sent:', sent.error)
     throw new OwnerError(503, 'email_failed', 'We couldn’t send the code right now. Try again in a few minutes.')
   }
-  if (testCode) console.warn(`[Atelier] owner portal TEST MODE: ${purpose} code for ${maskEmail(email)} shown in the app (email not set up)`)
-  return {
-    maskedEmail: maskEmail(email), resendInSec: RESEND_COOLDOWN_MS / 1000, expiresInSec: OTP_TTL_MS / 1000,
-    ...(testCode ? { testCode } : {}),
-  }
+  return { maskedEmail: maskEmail(email), resendInSec: RESEND_COOLDOWN_MS / 1000, expiresInSec: OTP_TTL_MS / 1000 }
 }
 
 /**

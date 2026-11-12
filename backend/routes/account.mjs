@@ -5,6 +5,7 @@ import { logAppEvent } from '../lib/clients.mjs'
 import { serviceDb, isMissingSchema } from '../lib/db.mjs'
 import { callerOf } from '../lib/identity.mjs'
 import { allow, clientIp } from '../lib/rateLimit.mjs'
+import { sendEmail } from '../lib/email.mjs'
 
 // Accounts: embed-partner credit status, B2C membership, sign-in helpers,
 // account deletion, and lifecycle events the app reports.
@@ -127,6 +128,77 @@ router.post('/api/auth/account-type', async (req, res) => {
     return res.json({ type: 'personal' })
   }
   return res.json({ type: data === 'company' ? 'company' : 'personal' })
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/password-reset  { email } → { sent: true, resendInSec }
+// "Forgot password" for shoppers and store logins. Supabase makes the one-time
+// code (admin generateLink, which sends nothing) and we email it ourselves
+// (lib/email.mjs); the app then calls supabase.auth.verifyOtp({ type:
+// 'recovery' }) and updateUser({ password }). The answer is the same whether
+// or not the email has an account. An organization owner's login is reset only
+// through the owner portal (its own codes, session rules and audit), so an
+// owner gets an email pointing there instead.
+// ---------------------------------------------------------------------------
+export const RESET_COOLDOWN_SEC = 60
+const RESET_SENT = { sent: true, resendInSec: RESET_COOLDOWN_SEC }
+const ilikeExact = (s) => s.replace(/[\\%_]/g, (ch) => `\\${ch}`)
+
+router.post('/api/auth/password-reset', async (req, res) => {
+  const email = String(req.body?.email ?? '').trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Enter a valid email.' })
+  }
+  if (!allow('pw-reset-ip', clientIp(req), 10, 15 * 60_000) || !allow('pw-reset-email', email, 5, 60 * 60_000)) {
+    return res.status(429).json({ error: 'Too many attempts — try again in a few minutes.', code: 'too_many' })
+  }
+  if (!allow('pw-reset-cooldown', email, 1, RESET_COOLDOWN_SEC * 1000)) {
+    return res.status(429).json({ error: 'Wait a moment before asking for another code.', code: 'cooldown', retryInSec: RESET_COOLDOWN_SEC })
+  }
+  const db = serviceDb()
+  if (!db) return res.status(503).json({ error: 'Password reset isn’t available right now.' })
+
+  const failed = (why) => {
+    console.error('[Atelier] password reset email not sent:', why)
+    return res.status(503).json({ error: 'We couldn’t send the code right now. Try again in a few minutes.', code: 'email_failed' })
+  }
+  const delivered = (r) => r.status === 'sent' || (r.status === 'skipped' && process.env.NODE_ENV !== 'production')
+
+  try {
+    const { data: owner, error: ownerErr } = await db.from('b2b_owners').select('owner_id, activated_at')
+      .ilike('email', ilikeExact(email)).limit(1).maybeSingle()
+    if (ownerErr && !isMissingSchema(ownerErr)) throw ownerErr
+    if (owner?.activated_at) {
+      const base = (process.env.APP_PUBLIC_URL || '').replace(/\/$/, '')
+      const r = await sendEmail({
+        to: email, subject: 'Resetting your Atelier owner password',
+        body: 'Someone asked to reset the password for this email on the Atelier sign-in page.\n\n' +
+          'This email is an organization owner login, so its password is reset from the owner portal: ' +
+          'choose Company › Owner on the sign-in page, then “Forgot password?”. You’ll need your store code.\n\n' +
+          'If you didn’t ask for this, you can ignore this email — nothing has changed.',
+        link: base ? { url: `${base}/owner/forgot`, label: 'Reset owner password' } : null,
+      })
+      return delivered(r) ? res.json(RESET_SENT) : failed(r.error)
+    }
+
+    const { data, error } = await db.auth.admin.generateLink({ type: 'recovery', email })
+    if (error) {
+      // No account for this email: answer as if a code went out.
+      if (error.code === 'user_not_found' || error.status === 404 || /not found/i.test(error.message ?? '')) return res.json(RESET_SENT)
+      throw error
+    }
+    const code = data?.properties?.email_otp
+    if (!code) throw new Error('generateLink returned no email_otp')
+    const r = await sendEmail({
+      to: email, subject: 'Your Atelier password reset code', code,
+      body: `Your code is ${code}. Enter it in Atelier to choose a new password. It works once and expires in 1 hour.\n\n` +
+        'If you didn’t ask for this, you can ignore this email — your password stays the same without the code.',
+    })
+    return delivered(r) ? res.json(RESET_SENT) : failed(r.error)
+  } catch (err) {
+    console.error('[Atelier] password reset failed:', err?.message)
+    return res.status(503).json({ error: 'Password reset isn’t available right now. Try again in a few minutes.' })
+  }
 })
 
 router.post('/api/account/delete', async (req, res) => {

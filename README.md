@@ -40,6 +40,7 @@ so it may only hold `EXPO_PUBLIC_*` values. Secrets live only in `backend/.env`,
 | `npm run build:web` | Static web build into `frontend/dist/` |
 | `npm start` | Runs the API the way production does |
 | `npm run job:daily` | Daily maintenance job (expire folders, suspend lapsed plans, credit emails) |
+| `npm run email:test -w backend -- you@example.com` | Sends one test email with the current email settings and says which sender delivered it |
 
 On a physical device, set `EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:8787` in `frontend/.env`.
 API check: `GET /api/health` returns `{ "ok": true }`.

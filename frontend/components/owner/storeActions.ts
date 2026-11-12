@@ -13,24 +13,6 @@ import { confirmDialog, promptDialog, toast, type MenuItem } from './kit'
 
 const looksLikeEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
 
-/**
- * TEMPORARY test mode (the API has no email yet): no invite email went out, so
- * hand the owner the link to pass on. Gone once the server's email is set up.
- */
-export async function showTestInvite(url: string | undefined, email: string): Promise<boolean> {
-  if (!url) return false
-  const copy = await confirmDialog({
-    title: 'Share this invite link',
-    body: `Test mode — email isn’t set up yet, so nothing was emailed to ${email}. Send them this link (it works once, for 7 days):\n\n${url}`,
-    confirmLabel: 'Copy link',
-  })
-  if (copy) {
-    const r = await copyText(url)
-    if (r === 'copied') toast('Invite link copied.')
-  }
-  return true
-}
-
 async function run(work: () => Promise<void>) {
   try {
     await work()
@@ -42,7 +24,6 @@ async function run(work: () => Promise<void>) {
 export const storeActions = {
   resend: (row: OwnerStoreRow, done: () => void) => run(async () => {
     const r = await resendStoreInvite(row.id)
-    if (await showTestInvite(r.testInviteUrl, row.managerEmail)) { done(); return }
     if (r.emailStatus === 'failed') toast(`The invite email to ${row.managerEmail} wasn’t delivered. Try resending in a few minutes.`, { tone: 'error' })
     else toast(`Invite sent again to ${row.managerEmail}. The old link no longer works.`)
     done()
@@ -67,7 +48,6 @@ export const storeActions = {
     })
     if (!email || email.toLowerCase() === row.managerEmail.toLowerCase()) return
     const r = await changeStoreInviteEmail(row.id, email)
-    if (await showTestInvite(r.testInviteUrl, email)) { done(); return }
     toast(r.emailStatus === 'failed' ? `Email changed, but the invite to ${email} wasn’t delivered — resend it.` : `New invite sent to ${email}.`,
       { tone: r.emailStatus === 'failed' ? 'error' : 'success' })
     done()
