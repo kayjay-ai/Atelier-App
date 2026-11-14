@@ -138,7 +138,8 @@ router.post('/api/auth/account-type', async (req, res) => {
 // 'recovery' }) and updateUser({ password }). The answer is the same whether
 // or not the email has an account. An organization owner's login is reset only
 // through the owner portal (its own codes, session rules and audit), so an
-// owner gets an email pointing there instead.
+// owner gets an email pointing there instead. Signed-in "Change password"
+// (profile / company page) uses the same steps with { reason: 'change' }.
 // ---------------------------------------------------------------------------
 export const RESET_COOLDOWN_SEC = 60
 const RESET_SENT = { sent: true, resendInSec: RESET_COOLDOWN_SEC }
@@ -146,6 +147,7 @@ const ilikeExact = (s) => s.replace(/[\\%_]/g, (ch) => `\\${ch}`)
 
 router.post('/api/auth/password-reset', async (req, res) => {
   const email = String(req.body?.email ?? '').trim().toLowerCase()
+  const change = req.body?.reason === 'change' // signed in, "Change password" (only the email's wording differs)
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return res.status(400).json({ error: 'Enter a valid email.' })
   }
@@ -189,11 +191,17 @@ router.post('/api/auth/password-reset', async (req, res) => {
     }
     const code = data?.properties?.email_otp
     if (!code) throw new Error('generateLink returned no email_otp')
-    const r = await sendEmail({
-      to: email, subject: 'Your Atelier password reset code', code,
-      body: `Your code is ${code}. Enter it in Atelier to choose a new password. It works once and expires in 1 hour.\n\n` +
-        'If you didn’t ask for this, you can ignore this email — your password stays the same without the code.',
-    })
+    const r = await sendEmail(change
+      ? {
+          to: email, subject: 'Your code to change your Atelier password', code,
+          body: `Your code is ${code}. Enter it in Atelier, on the page where you asked to change your password, then choose your new password. It works once and expires in 1 hour.\n\n` +
+            'If you didn’t ask for this, you can ignore this email — your password stays the same without the code.',
+        }
+      : {
+          to: email, subject: 'Your Atelier password reset code', code,
+          body: `Your code is ${code}. Enter it in Atelier to choose a new password. It works once and expires in 1 hour.\n\n` +
+            'If you didn’t ask for this, you can ignore this email — your password stays the same without the code.',
+        })
     return delivered(r) ? res.json(RESET_SENT) : failed(r.error)
   } catch (err) {
     console.error('[Atelier] password reset failed:', err?.message)

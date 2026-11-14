@@ -13,6 +13,7 @@ import {
 } from '../../lib/ui'
 import { FIT_LABELS, type Measurements } from '../../lib/types'
 import { DateOfBirthField, parseDob, dobFromIso, type DobValue } from '../../components/DateOfBirthField'
+import { ChangePassword } from '../../components/ChangePassword'
 
 // Profile tab (spec §3.2): Your photo · Your size · Fit preference · Account,
 // with the three set-up steps on top. Guests can fill photo / size / fit for
@@ -438,6 +439,10 @@ function AccountSection({ session }: { session: NonNullable<Session> }) {
       </View>
 
       {msg && !msg.ok && <Notice tone="error" text={msg.text} />}
+
+      <Divider />
+      <Text style={s.subTitle}>Password</Text>
+      <ChangePassword email={session.email} />
 
       <Divider />
       <View style={s.dangerRow}>

@@ -6,7 +6,8 @@ import { useAccountStore } from '../../lib/account'
 import { signOutStore, useHeartbeat } from '../../lib/heartbeat'
 import { SUPPORT_EMAIL } from '../../lib/b2b'
 import { Colors, Typography, Space, Radius } from '../../lib/theme'
-import { Card, Icon, Initials, Notice, Page, PasswordField, PillButton, Tag, TextLink, Title, toast } from '../../lib/ui'
+import { Card, Icon, Initials, Page, PillButton, Tag, TextLink, Title } from '../../lib/ui'
+import { ChangePassword } from '../../components/ChangePassword'
 
 // Spec §2.10. Company details are maintained by the Atelier admin for now (shown
 // read-only); stores are view-only and never limited.
@@ -25,10 +26,6 @@ export default function CompanyScreen() {
   const refresh = useAccountStore((st) => st.refresh)
   const deviceCode = useHeartbeat((st) => st.deviceCode)
   const [email, setEmail] = useState('')
-  const [pw, setPw] = useState('')
-  const [pw2, setPw2] = useState('')
-  const [pwBusy, setPwBusy] = useState(false)
-  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setEmail(data.session?.user?.email ?? ''))
@@ -37,19 +34,6 @@ export default function CompanyScreen() {
 
   if (account?.type !== 'b2b_company') return null
   const { client, stores } = account
-
-  async function changePassword() {
-    setPwMsg(null)
-    if (pw.length < 8) { setPwMsg({ ok: false, text: 'Use at least 8 characters.' }); return }
-    if (pw !== pw2) { setPwMsg({ ok: false, text: 'The two passwords don’t match.' }); return }
-    setPwBusy(true)
-    const { error } = await supabase.auth.updateUser({ password: pw })
-    setPwBusy(false)
-    if (error) { setPwMsg({ ok: false, text: error.message }); return }
-    setPw(''); setPw2('')
-    setPwMsg(null)
-    toast('Password changed. Use it next time you sign in on any device.')
-  }
 
   async function signOut() {
     await signOutStore() // last heartbeat → dashboard shows this device Offline at once
@@ -104,10 +88,7 @@ export default function CompanyScreen() {
         <View style={s.colSide}>
           <Card>
             <Text style={s.cardTitle}>Change password</Text>
-            <PasswordField label="New password" value={pw} onChangeText={setPw} autoComplete="new-password" containerStyle={{ marginTop: 0 }} />
-            <PasswordField label="Repeat new password" value={pw2} onChangeText={setPw2} autoComplete="new-password" containerStyle={{ marginTop: 0 }} />
-            {pwMsg && !pwMsg.ok && <Notice tone="error" text={pwMsg.text} />}
-            <PillButton label="Update password" size="md" onPress={changePassword} loading={pwBusy} />
+            <ChangePassword email={email} />
           </Card>
 
           <Card variant="sunken">

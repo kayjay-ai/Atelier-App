@@ -278,11 +278,12 @@ export async function deleteAccount(): Promise<void> {
  * supabase.auth.verifyOtp({ type: 'recovery' }) + updateUser({ password }).
  * Throws ApiError (code 'cooldown' carries extra.retryInSec).
  */
-export async function requestPasswordReset(email: string): Promise<{ sent: true; resendInSec: number }> {
+/** Emails a one-time password code. reason 'change' = signed in, changing it (only the email's wording differs). */
+export async function requestPasswordReset(email: string, reason?: 'change'): Promise<{ sent: true; resendInSec: number }> {
   let res: Response
   try {
     res = await fetch(`${BASE}/api/auth/password-reset`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reason ? { email, reason } : { email }),
     })
   } catch {
     throw new ApiError(0, 'Can’t reach Atelier right now. Check your connection and try again.', 'network', {})
