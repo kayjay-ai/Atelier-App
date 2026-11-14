@@ -99,7 +99,9 @@ rollback are in [`deploy/droplet/README.md`](deploy/droplet/README.md) (`bash de
   (committed; public values only). A variable set in the build environment (e.g. Cloudflare
   → Settings → Build → Variables) overrides it. Node 22 is pinned by `.node-version`.
 - Cloudflare: Worker `atelier-web`, builds `main` with `npm run build:web`, deploys with
-  `npx wrangler deploy` (`wrangler.jsonc`); live at https://atelier-web.team-quasarinnovates.workers.dev.
+  `npx wrangler deploy` (`wrangler.jsonc`); live at https://atelierbyquasar.in (custom domain on the
+  Worker; www redirects to it; also still at https://atelier-web.team-quasarinnovates.workers.dev).
+- Email is sent through Resend from `hello@atelierbyquasar.in` (domain verified; its DNS is on Cloudflare).
 
 **iOS / Android:** EAS Build from `frontend/` (`eas build --profile <name>`); profiles and
 their env are in `frontend/eas.json`.
