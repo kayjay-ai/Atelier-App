@@ -68,9 +68,11 @@ async function isOwnerSession(): Promise<boolean> {
 
 // `as` = the option picked on this page (Personal / Company). Without it (an
 // already signed-in session, e.g. a reload) the account decides. A personal
-// account saves the date of birth typed on this page; one still missing a date
-// of birth (and the email form wasn't used, e.g. Google) or a name goes through
-// /welcome (spec §3.1). Returns 'needsDob' when the email form must ask for it.
+// account saves the date of birth typed on this page and goes straight to the
+// app (the name can be added later on Profile). One that still has no date of
+// birth (Google / Apple) is asked for it by a required pop-up over the app
+// (components/DobGate.tsx). Returns 'needsDob' when the email sign-in form must
+// ask for the date of birth.
 async function enterApp(opts: { as?: AccountKind; dob?: string; fromForm?: boolean } = {}): Promise<'needsDob' | void> {
   if (opts.as) await checkKind(opts.as)
   const account = await useAccountStore.getState().load()
@@ -79,7 +81,7 @@ async function enterApp(opts: { as?: AccountKind; dob?: string; fromForm?: boole
     const profile = userId ? await fetchProfile(userId) : null
     let dateOfBirth = profile?.dateOfBirth ?? null
     // Only when the database has the column (b2c-app.sql); a failed save never
-    // blocks signing in — the profile / welcome page can save it later.
+    // blocks signing in — Profile can save it later.
     if (userId && profile?.hasAccountColumns && opts.dob && opts.dob !== dateOfBirth) {
       try {
         await upsertProfile(userId, email ?? '', { dateOfBirth: opts.dob })
@@ -89,10 +91,6 @@ async function enterApp(opts: { as?: AccountKind; dob?: string; fromForm?: boole
       }
     }
     if (profile?.hasAccountColumns && !dateOfBirth && opts.fromForm) return 'needsDob'
-    if (profile?.hasAccountColumns && (!dateOfBirth || !profile.name)) {
-      router.replace('/welcome')
-      return
-    }
   }
   router.replace(homeFor(account))
 }

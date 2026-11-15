@@ -8,6 +8,7 @@ import { AppTabBar, CreditPill, Wordmark, tabScreenOptions, useDesktopLayout, ty
 import { useAccountStore } from '../../lib/account'
 import { useMembershipStore, useProfileStore, isPremium, creditsLeft } from '../../lib/store'
 import { supabase } from '../../lib/supabaseClient'
+import { DobGate } from '../../components/DobGate'
 
 // ─── B2C consumer app shell (spec §3) ─────────────────────────────────────────
 // Tabs: Home · Style · Premium · History · Profile. Phones and tablets: the
@@ -104,6 +105,7 @@ export default function TabLayout() {
           {TABS.map((t) => <Tabs.Screen key={t.name} name={t.name} options={{ title: t.title }} />)}
         </Tabs>
       </View>
+      <DobGate />
     </View>
   )
 }

@@ -17,6 +17,8 @@ interface ProfileState {
   loaded: boolean
   name: string | null
   dateOfBirth: string | null       // YYYY-MM-DD
+  /** True when the profile row was read and has the date_of_birth column (b2c-app.sql). */
+  dobTracked: boolean
   notifyEmail: boolean
   notifyPush: boolean
   measurements: Measurements | null
@@ -35,7 +37,7 @@ interface ProfileState {
 }
 
 const EMPTY_PROFILE = {
-  loaded: false, name: null, dateOfBirth: null, notifyEmail: true, notifyPush: true,
+  loaded: false, name: null, dateOfBirth: null, dobTracked: false, notifyEmail: true, notifyPush: true,
   measurements: null, photoUri: null, colorAnalysis: null, styleReport: null,
 }
 
@@ -57,6 +59,7 @@ export const useProfileStore = create<ProfileState>()((set, get) => ({
       loaded: true,
       name: remote?.name ?? null,
       dateOfBirth: remote?.dateOfBirth ?? null,
+      dobTracked: !!remote?.hasAccountColumns,
       notifyEmail: remote?.notifyEmail ?? true,
       notifyPush: remote?.notifyPush ?? true,
       measurements: remote?.measurements ?? get().measurements,

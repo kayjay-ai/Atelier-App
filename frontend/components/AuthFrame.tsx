@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { Colors, Typography, Space, Layout } from '../lib/theme'
 import { Title, Wordmark } from '../lib/ui'
 
-// The frame of every sign-in page (sign in, welcome, owner sign-in /
+// The frame of every sign-in page (sign in, owner sign-in /
 // activation / reset, store invite). Phones and iPads in portrait: the
 // wordmark over one centred column. From Layout.desktop: split in two — the
 // charcoal stage with the photograph on the left, the form on the right.

@@ -58,7 +58,6 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, animation: Platform.OS === 'web' ? 'none' : 'fade', contentStyle: { backgroundColor: Colors.bg } }}>
         <Stack.Screen name="index"  options={{ headerShown: false }} />
         <Stack.Screen name="auth"   options={{ headerShown: false }} />
-        <Stack.Screen name="welcome" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="store"  options={{ headerShown: false }} />
         <Stack.Screen name="owner"  options={{ headerShown: false }} />
