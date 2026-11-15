@@ -5,12 +5,25 @@ import { extractJson } from './json.mjs'
 // Gemini calls for the AI features. Every text feature (style, colour, size,
 // verdict, safety) asks for JSON the same way and gets one of two outcomes:
 //   { ok: true, data }                 — parsed and accepted
-//   { ok: false, reason }              — no_key | rate_limit | failed
+//   { ok: false, reason }              — demo | no_key | rate_limit | failed
 // and a fallback response is always marked the same way (markFallback), so the
 // app never has to recognise a canned answer by its text.
 // =============================================================================
 
 export const TEXT_MODEL = process.env.TEXT_MODEL || 'gemini-2.5-flash'
+
+/**
+ * DEMO_MODE (default true): Gemini is never called. Try-on serves the
+ * pre-generated catalog images and every other AI answer is a marked stand-in
+ * (reason 'demo', not retryable), with no credit spent. Set DEMO_MODE=false
+ * for live AI.
+ */
+export function demoMode() {
+  return (process.env.DEMO_MODE ?? 'true') !== 'false'
+}
+
+/** What a stand-in says while DEMO_MODE is on. */
+export const DEMO_MESSAGE = 'Live AI is switched off while Atelier is in preview — this is a sample answer. No credit was used.'
 
 // Try-on image cost tier. `economy` (default) uses Gemini 3.1 Flash Lite Image;
 // `standard` uses the Pro image model. Flip with one env line — no code change.
@@ -63,6 +76,10 @@ export function describeGeminiError(err) {
  *   client — injectable for tests; defaults to textClient()
  */
 export async function askJson({ label, system, parts, accept, client = textClient(), model = TEXT_MODEL }) {
+  if (demoMode()) {
+    console.info(`[Atelier] ${label}: DEMO_MODE — no Gemini call, serving the stand-in.`)
+    return { ok: false, reason: 'demo' }
+  }
   if (!client) {
     console.info(`[Atelier] ${label}: no Gemini key configured — serving the fallback.`)
     return { ok: false, reason: 'no_key' }
@@ -92,5 +109,5 @@ export async function askJson({ label, system, parts, accept, client = textClien
  * never save a fallback as a real result.
  */
 export function markFallback(body, reason) {
-  return { ...body, fallback: true, fallbackReason: reason, retryable: reason !== 'no_key' }
+  return { ...body, fallback: true, fallbackReason: reason, retryable: reason !== 'no_key' && reason !== 'demo' }
 }

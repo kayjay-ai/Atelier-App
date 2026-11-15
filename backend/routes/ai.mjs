@@ -6,7 +6,7 @@ import { styleSystemPrompt, sizeSystemPrompt, sizeImageSystemPrompt, colorSystem
 import { recommendSize } from '../lib/sizeHeuristic.mjs'
 import { STYLE_FALLBACK, COLOR_FALLBACK, ATELIER_BUSY_MESSAGE } from '../lib/fallbacks.mjs'
 import { describeDataUrl, fetchGarmentAsDataUrl, runTryOnGeneration, tryOnUserMessage } from '../lib/tryon.mjs'
-import { askJson, markFallback, imagePart, measurementsLine, imageClient, IMAGE_MODEL, describeGeminiError } from '../lib/ai.mjs'
+import { askJson, markFallback, imagePart, measurementsLine, imageClient, IMAGE_MODEL, describeGeminiError, demoMode, DEMO_MESSAGE } from '../lib/ai.mjs'
 import { spender } from '../lib/spend.mjs'
 import { featureSpec } from '../lib/features.mjs'
 import { creditContextFromBody } from '../lib/credits.mjs'
@@ -84,6 +84,8 @@ async function textFeature(req, res, { feature, validate, ask, fallback }) {
   const body = req.body || {}
   const invalid = validate?.(body)
   if (invalid) return res.status(400).json(invalid)
+  // DEMO_MODE: a marked stand-in, before any credit is reserved.
+  if (demoMode()) return res.json(markFallback(fallback(body, 'demo'), 'demo'))
   const caller = featureSpec(feature).ledgers ? await callerOf(req) : {}
   const spend = await spender.reserve({ feature, body, caller })
   if (!spend.ok) return res.status(spend.status).json(spend.body)
@@ -140,6 +142,7 @@ router.post('/api/color', (req, res) => textFeature(req, res, {
 // size chart) and the current bring-your-own one ({ measurements,
 // garmentImageBase64, garmentName, sizeChartText }).
 const SIZE_FALLBACK = {
+  demo: { size: 'M', confidence: 'low', explanation: DEMO_MESSAGE, caveat: 'Sample answer — live AI is off.' },
   no_key: { size: 'M', confidence: 'low', explanation: 'Size assistant unavailable — add your measurements and try again.', caveat: 'No AI key configured.' },
   other: { size: 'M', confidence: 'low', explanation: 'Could not analyse the garment image — try pasting the size chart below for a better result.', caveat: 'AI analysis unavailable right now.' },
 }
@@ -182,7 +185,7 @@ ${measurementsLine(measurements)}`,
     // The catalog path falls back to the size-chart heuristic, the image path to a canned answer.
     fallback: ({ measurements, garment }, reason) => (legacy
       ? recommendSize(measurements, garment.sizeChart || [])
-      : SIZE_FALLBACK[reason === 'no_key' ? 'no_key' : 'other']),
+      : SIZE_FALLBACK[reason === 'no_key' || reason === 'demo' ? reason : 'other']),
   })
 })
 
@@ -210,7 +213,9 @@ router.post('/api/verdict', (req, res) => textFeature(req, res, {
       accept: (d) => !!d.call,
     })
   },
-  fallback: (_body, reason) => (reason === 'no_key'
+  fallback: (_body, reason) => (reason === 'demo'
+    ? { call: 'Maybe', verdict: DEMO_MESSAGE, whyItWorks: '—', theCatch: '—', wearItWith: '—' }
+    : reason === 'no_key'
     ? { call: 'Maybe', verdict: 'Style assistant is unavailable right now.', whyItWorks: 'Unable to analyse — no AI key configured.', theCatch: '—', wearItWith: '—' }
     : { call: 'Maybe', verdict: 'The assistant is busy — try again in a moment.', whyItWorks: '—', theCatch: '—', wearItWith: '—' }),
 }))
@@ -302,12 +307,18 @@ router.post('/api/tryon', async (req, res) => {
     }
   }
 
-  // Pre-generated demo images (DEMO_MODE, catalog products): free.
-  const demoMode = (process.env.DEMO_MODE ?? 'true') !== 'false'
-  if (demoMode && productId && !forceLive && !garmentImageUrl) {
-    if (fs.existsSync(path.join(TRYON_DIR, `${productId}.png`))) {
+  // DEMO_MODE: never call Gemini. Catalog products with a pre-generated image
+  // get it (free); anything else gets a marked stand-in, no credit spent.
+  if (demoMode()) {
+    if (productId && !forceLive && !garmentImageUrl && fs.existsSync(path.join(TRYON_DIR, `${productId}.png`))) {
       return res.json({ image: `/tryon/${productId}.png`, demo: true, credits: null })
     }
+    console.info('[Atelier] /api/tryon: DEMO_MODE — no Gemini image call, no credit consumed')
+    return res.json({
+      fallback: true, retryable: false, fallbackReason: 'demo',
+      message: 'Live try-on is switched off while Atelier is in preview. No credit was used.',
+      error: { status: null, type: 'DemoMode', message: 'DEMO_MODE is on: no Gemini call.' },
+    })
   }
 
   // Validate before charging.

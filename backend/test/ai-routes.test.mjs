@@ -74,3 +74,32 @@ test('try-on: validation runs before any charge, and a missing key is not retrya
   assert.equal(noKey.body.retryable, false)
   assert.equal(noKey.body.error.type, 'MissingApiKey')
 })
+
+test('DEMO_MODE: no Gemini call and no credit for any feature; stand-ins are not retryable', async () => {
+  // A key is set, so only DEMO_MODE stands between these calls and Gemini.
+  const saved = { demo: process.env.DEMO_MODE, key: process.env.GEMINI_API_KEY, text: process.env.GEMINI_TEXT_API_KEY }
+  process.env.DEMO_MODE = 'true'
+  process.env.GEMINI_API_KEY = 'demo-test-key'
+  process.env.GEMINI_TEXT_API_KEY = 'demo-test-key'
+  try {
+    const demo = (body) => { assert.equal(body.fallback, true); assert.equal(body.fallbackReason, 'demo'); assert.equal(body.retryable, false) }
+    demo((await post(app.url, '/api/style', { photoBase64: IMG })).body)
+    demo((await post(app.url, '/api/color', { photoBase64: IMG })).body)
+    demo((await post(app.url, '/api/size', { measurements: MEASUREMENTS, garmentImageBase64: IMG })).body)
+    demo((await post(app.url, '/api/verdict', { garmentImageBase64: IMG })).body)
+    const safety = (await post(app.url, '/api/safety/check', { imageBase64: IMG })).body
+    assert.equal(safety.safe, true) // fails open
+    demo(safety)
+    // An uploaded garment would need a live generation: a stand-in instead.
+    const tryon = await post(app.url, '/api/tryon', { userPhotoBase64: IMG, garmentImageBase64: IMG })
+    assert.equal(tryon.status, 200)
+    demo(tryon.body)
+    assert.equal(tryon.body.error.type, 'DemoMode')
+    // Validation still runs first.
+    assert.equal((await post(app.url, '/api/color', {})).status, 400)
+  } finally {
+    process.env.DEMO_MODE = saved.demo
+    process.env.GEMINI_API_KEY = saved.key
+    process.env.GEMINI_TEXT_API_KEY = saved.text
+  }
+})
