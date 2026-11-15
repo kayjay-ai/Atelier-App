@@ -5,7 +5,7 @@ import { Redirect, router, usePathname } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
 import { useAccountStore, usableCredits } from '../../lib/account'
 import { dismissStoreNotice } from '../../lib/api'
-import { SUPPORT_EMAIL } from '../../lib/b2b'
+import { SUPPORT_EMAIL, useClosedBanners } from '../../lib/b2b'
 import { beatNow, signOutStore, startHeartbeat, stopHeartbeat, useHeartbeat } from '../../lib/heartbeat'
 import { Colors, Typography, Space, Layout, Weight } from '../../lib/theme'
 import {
@@ -68,69 +68,89 @@ function StoreHeader() {
 const DAY_MS = 24 * 60 * 60 * 1000
 const fmtDay = (ms: number) => new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 
-// One banner under the header, most urgent first (Admin spec §5.9, §8): an admin
-// message, plan / trial expiry, then credits. The full warning lives on Plan.
-function StoreBanner() {
+// One banner under the header (Admin spec §5.9, §8): an admin's own message
+// first, otherwise one warning about the plan or credits, most urgent first.
+// Every banner closes with its X. A closed warning stays closed on this device
+// until it changes: credits stop being low / come back, or the plan or trial
+// date moves. The admin's low / used-up credit notices aren't shown separately:
+// they mean the same as the app's own credit warning, so that one shows (with
+// the live balance) and closing it also dismisses the notice.
+function StoreBanner({ lapsed }: { lapsed: boolean }) {
   const account = useAccountStore((s) => s.account)
   const session = useAccountStore((s) => s.session)
   const dismissNotice = useAccountStore((s) => s.dismissNotice)
-  if (account?.type !== 'b2b_company') return null
-  const { client, plan } = account
+  const b2b = account?.type === 'b2b_company' ? account : null
+  const storeId = b2b?.client.id ?? ''
   const lowPct = session?.settings.lowCreditPct ?? 20
-  const graceDays = session?.settings.graceDays ?? 7
-  const now = Date.now()
-
-  let tone: 'warn' | 'error' = 'warn'
-  let text: string | null = null
-  let onClose: (() => void) | null = null
-
-  const notice = session?.notice
-  const renewal = client.renewalAt ? Date.parse(client.renewalAt) : null
-  const trialEnd = client.trialEndsAt ? Date.parse(client.trialEndsAt) : null
-  const included = plan?.creditsIncluded ?? 0
-  const credits = usableCredits(client)
-  const pctLeft = included > 0 ? Math.round((credits / included) * 100) : 0
+  const included = b2b?.plan?.creditsIncluded ?? 0
+  const credits = b2b ? usableCredits(b2b.client) : 0
   const low = included > 0 && (credits / included) * 100 <= lowPct
 
-  // A credit notice's saved text holds the count from when it was sent, so it
-  // is written from the live balance instead, and dropped once it no longer applies.
-  const creditNotice = notice?.template === 'low_credits' || notice?.template === 'out_of_credits'
-  const staleNotice = notice?.template === 'low_credits' ? (credits <= 0 || !low)
-    : notice?.template === 'out_of_credits' ? credits > 0
-      : false
+  const closed = useClosedBanners((s) => s.closed[storeId])
+  const closeBanner = useClosedBanners((s) => s.close)
+  const reopenBanner = useClosedBanners((s) => s.reopen)
+  const loaded = !!b2b && !!session // lowPct comes with the session; don't judge "low" before it
+  useEffect(() => {
+    if (!loaded) return
+    if (closed?.low && included > 0 && !low) reopenBanner(storeId, 'low')
+    if (closed?.out && credits > 0) reopenBanner(storeId, 'out')
+  }, [loaded, low, included, credits, storeId, closed?.low, closed?.out, reopenBanner])
 
-  if (notice && !staleNotice && (creditNotice || notice.body || notice.subject)) {
-    text = notice.template === 'low_credits'
-      ? `${pctLeft}% of your plan credits are left (${credits.toLocaleString('en-IN')}). Upgrade or top up your plan so your iPads keep working.`
-      : notice.body || notice.subject
-    onClose = () => { dismissNotice(); dismissStoreNotice(notice.id) }
+  if (!b2b) return null
+  const { client } = b2b
+  const notice = session?.notice
+  const creditNotice = notice?.template === 'low_credits' || notice?.template === 'out_of_credits'
+
+  if (notice && !creditNotice && (notice.body || notice.subject)) {
+    return <BannerBar tone="warn" text={notice.body || notice.subject || ''} onClose={() => { dismissNotice(); dismissStoreNotice(notice.id) }} />
+  }
+
+  const graceDays = session?.settings.graceDays ?? 7
+  const now = Date.now()
+  const renewal = client.renewalAt ? Date.parse(client.renewalAt) : null
+  const trialEnd = client.trialEndsAt ? Date.parse(client.trialEndsAt) : null
+  const pctLeft = included > 0 ? Math.round((credits / included) * 100) : 0
+
+  let warning: { key: string; tone: 'warn' | 'error'; text: string } | null = null
+  if (lapsed) {
+    warning = { key: `lapsed:${client.renewalAt ?? client.trialEndsAt ?? ''}`, tone: 'error',
+      text: 'Your plan or free trial has ended — try-ons are paused. Renew in Plan & Credits to continue.' }
   } else if (client.status === 'trial' && trialEnd && trialEnd < now) {
-    tone = 'error'; text = 'Your free trial has ended — choose a plan in Plan & Credits.'
+    warning = { key: `trial:${client.trialEndsAt}`, tone: 'error', text: 'Your free trial has ended — choose a plan in Plan & Credits.' }
   } else if (renewal && renewal < now) {
     const pauseAt = renewal + graceDays * DAY_MS
-    tone = 'error'
-    text = pauseAt > now
-      ? `Your plan renewal is overdue — iPads pause on ${fmtDay(pauseAt)} unless you renew in Plan & Credits.`
-      : 'Your plan has expired — renew it in Plan & Credits.'
+    warning = { key: `renewal:${client.renewalAt}`, tone: 'error', text: pauseAt > now
+      ? `Your plan renewal is overdue — try-ons pause on ${fmtDay(pauseAt)} unless you renew in Plan & Credits.`
+      : 'Your plan has expired — renew it in Plan & Credits.' }
   } else if (credits <= 0) {
-    tone = 'error'; text = 'Credits used up — new try-ons are paused. Renew, upgrade or buy top-up credits in Plan & Credits.'
+    warning = { key: 'out', tone: 'error', text: 'Credits used up — new try-ons are paused. Renew, upgrade or buy top-up credits in Plan & Credits.' }
   } else if (low) {
-    text = `${pctLeft}% of your credits left — upgrade or buy top-up credits in Plan & Credits.`
+    warning = { key: 'low', tone: 'warn',
+      text: `${pctLeft}% of your plan credits are left (${credits.toLocaleString('en-IN')}). Upgrade or buy top-up credits in Plan & Credits.` }
   }
-  if (!text) return null
+  if (!warning || closed?.[warning.key]) return null
 
+  const key = warning.key
+  return (
+    <BannerBar tone={warning.tone} text={warning.text} onClose={() => {
+      closeBanner(storeId, key)
+      if (notice && creditNotice) { dismissNotice(); dismissStoreNotice(notice.id) }
+    }} />
+  )
+}
+
+function BannerBar({ tone, text, onClose }: { tone: 'warn' | 'error'; text: string; onClose: () => void }) {
+  const color = tone === 'error' ? Colors.error : Colors.warning
   return (
     <View style={[b.wrap, tone === 'error' ? b.error : b.warn]}>
       <View style={b.inner}>
-        <Icon name="alert" size={18} color={tone === 'error' ? Colors.error : Colors.warning} />
+        <Icon name="alert" size={18} color={color} />
         <TouchableOpacity style={{ flex: 1 }} onPress={() => router.navigate('/store/plan')} accessibilityRole="button" accessibilityHint="Opens Plan and Credits">
-          <Text style={[b.text, { color: tone === 'error' ? Colors.error : Colors.warning }]}>{text}</Text>
+          <Text style={[b.text, { color }]}>{text}</Text>
         </TouchableOpacity>
-        {onClose && (
-          <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityLabel="Dismiss message">
-            <Icon name="close" size={18} color={Colors.textMuted} />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Dismiss message">
+          <Icon name="close" size={18} color={Colors.textMuted} />
+        </TouchableOpacity>
       </View>
     </View>
   )
@@ -199,6 +219,9 @@ export default function StoreLayout() {
   const accountStatus = account?.type === 'b2b_company' ? account.client.status : null
   useEffect(() => {
     if (accountStatus === 'active' && storeStatus === 'suspended') beatNow()
+    // The heartbeat saw the pause first: reload the account so the session says
+    // whether it's a lapsed plan (app stays open) or an admin's hold (locked).
+    else if (storeStatus === 'suspended' && accountStatus !== 'suspended') useAccountStore.getState().refresh(true)
   }, [accountStatus, storeStatus])
 
   if (status === 'loading') {
@@ -225,11 +248,13 @@ export default function StoreLayout() {
     )
   }
 
-  // Suspended (by the heartbeat or the account row): offer Plan & Credits, where
-  // a store whose plan or trial ran out can pay to reactivate. A store an admin
-  // put on hold sees the reason there and can't buy.
+  // Suspended (by the heartbeat or the account row). Paused because the plan or
+  // trial ran out: the app stays open with a banner, so staff can see their
+  // customers and renew in Plan & Credits (the server refuses try-ons until
+  // then). An admin's hold locks the app; Plan & Credits shows the reason there.
   const suspended = account.client.status === 'suspended' || storeStatus === 'suspended'
-  if (suspended && (lockedPlanOpen || onPlanRoute)) {
+  const lapsed = suspended && session?.suspendedByExpiry === true
+  if (suspended && !lapsed && (lockedPlanOpen || onPlanRoute)) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.bg }}>
         <SafeAreaView edges={['top']} style={h.safe}>
@@ -246,7 +271,7 @@ export default function StoreLayout() {
       </View>
     )
   }
-  if (suspended) {
+  if (suspended && !lapsed) {
     return (
       <FullScreenMessage
         title="Your account is paused"
@@ -266,7 +291,7 @@ export default function StoreLayout() {
       />
     )
   }
-  if (storeStatus && storeStatus !== 'active') {
+  if (storeStatus && storeStatus !== 'active' && !lapsed) {
     return (
       <FullScreenMessage
         title="Your store is paused"
@@ -288,7 +313,7 @@ export default function StoreLayout() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       {!desktop && <StoreHeader />}
-      {!desktop && <StoreBanner />}
+      {!desktop && <StoreBanner lapsed={lapsed} />}
       <View style={{ flex: 1 }}>
         <Tabs
           screenOptions={tabScreenOptions(desktop)}
@@ -296,7 +321,7 @@ export default function StoreLayout() {
             <View>
               <AppTabBar {...props} items={TABS} desktop={desktop} insetBottom={insets.bottom}
                 brand={<StoreName />} right={<StoreCredits />} />
-              {desktop && <StoreBanner />}
+              {desktop && <StoreBanner lapsed={lapsed} />}
             </View>
           )}
         >

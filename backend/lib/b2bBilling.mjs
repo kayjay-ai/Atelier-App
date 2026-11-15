@@ -110,7 +110,8 @@ async function loadCatalog(supabase, currentPlanId) {
   }
 }
 
-async function suspendedByExpiry(supabase, storeId) {
+/** True when a suspended store was suspended because its plan or trial ran out (not by an admin). */
+export async function suspendedByExpiry(supabase, storeId) {
   const { data, error } = await supabase.rpc('store_suspended_by_expiry', { p_store_id: storeId })
   if (error) {
     if (isMissingSchema(error)) return false

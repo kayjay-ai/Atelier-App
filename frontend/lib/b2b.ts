@@ -217,6 +217,32 @@ export const useHiddenResults = create<HiddenResultsState>()(persist((set) => ({
   storage: createJSONStorage(() => AsyncStorage),
 }))
 
+// Store warnings staff closed on this device, per store, by key: 'low' (credits
+// low) and 'out' (used up) stay closed until they stop applying; plan / trial
+// warnings carry their date ('renewal:<date>'), so a new date shows again.
+// Closing one key drops older keys with the same prefix.
+interface ClosedBannersState {
+  closed: Record<string, Record<string, true>>
+  close: (storeId: string, key: string) => void
+  reopen: (storeId: string, key: string) => void
+}
+
+export const useClosedBanners = create<ClosedBannersState>()(persist((set) => ({
+  closed: {},
+  close: (storeId, key) => set(({ closed }) => {
+    const prefix = key.split(':')[0] + ':'
+    const kept = Object.fromEntries(Object.entries(closed[storeId] ?? {}).filter(([k]) => !(key.includes(':') && k.startsWith(prefix))))
+    return { closed: { ...closed, [storeId]: { ...kept, [key]: true } } }
+  }),
+  reopen: (storeId, key) => set(({ closed }) => {
+    const { [key]: _gone, ...rest } = closed[storeId] ?? {}
+    return { closed: { ...closed, [storeId]: rest } }
+  }),
+}), {
+  name: 'atelier.closedBanners',
+  storage: createJSONStorage(() => AsyncStorage),
+}))
+
 /** Admin dashboard engagement: staff shared or downloaded a result (spec §6.2). */
 export function reportShared(folderId: string | null, how: 'share' | 'download' | 'download_all') {
   postEvent('result_shared', { folderId: folderId ?? undefined, metadata: { how } })

@@ -4,7 +4,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { cashfreeMode } from '../lib/cashfree.mjs'
 import { touchDevice, logAppEvent, getSettings, latestTabletNotice } from '../lib/clients.mjs'
-import { BillingError, billingOverview, createB2BOrder, verifyAndApplyB2BOrder } from '../lib/b2bBilling.mjs'
+import { BillingError, billingOverview, createB2BOrder, suspendedByExpiry, verifyAndApplyB2BOrder } from '../lib/b2bBilling.mjs'
 import { ATELIER_BUSY_MESSAGE } from '../lib/fallbacks.mjs'
 import { serviceDb } from '../lib/db.mjs'
 import { callerOf } from '../lib/identity.mjs'
@@ -51,7 +51,14 @@ router.post('/api/b2b/session', async (req, res) => {
     })
   }
 
-  const [settings, notice] = await Promise.all([getSettings(), latestTabletNotice(company.clientId)])
+  // A store paused because its plan or trial ran out keeps using the app (try-ons
+  // stay refused by the server) so staff can renew; an admin's hold still locks it.
+  const lapsed = company.status === 'active' || company.status === 'trial' ? false
+    : suspendedByExpiry(serviceDb(), company.clientId).catch((err) => {
+      console.warn('[Atelier] /api/b2b/session: expiry check failed:', err.message)
+      return false
+    })
+  const [settings, notice, byExpiry] = await Promise.all([getSettings(), latestTabletNotice(company.clientId), lapsed])
   return res.json({
     device: device ? { id: device.id, storeId: device.storeId, name: device.name, status: device.status } : null,
     signOut: device?.status === 'sign_out_requested',
@@ -62,6 +69,7 @@ router.post('/api/b2b/session', async (req, res) => {
     notice: notice
       ? { id: notice.id, template: notice.template, subject: notice.subject, body: notice.body, linkUrl: notice.link_url, sentAt: notice.sent_at }
       : null,
+    suspendedByExpiry: byExpiry === true,
   })
 })
 

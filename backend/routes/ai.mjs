@@ -11,6 +11,8 @@ import { spender } from '../lib/spend.mjs'
 import { featureSpec } from '../lib/features.mjs'
 import { creditContextFromBody } from '../lib/credits.mjs'
 import { clientActive } from '../lib/clients.mjs'
+import { suspendedByExpiry } from '../lib/b2bBilling.mjs'
+import { serviceDb } from '../lib/db.mjs'
 import { membershipEnabled } from '../lib/membership.mjs'
 import { verifySession } from '../lib/embedSession.mjs'
 import { callerOf } from '../lib/identity.mjs'
@@ -43,8 +45,12 @@ function embedFeatureOff(req, embedKey) {
   return false
 }
 
-function storeBlockedMessage(store, storeKey) {
-  if (!clientActive(store)) return 'Your account is paused — contact Atelier support.'
+async function storeBlockedMessage(store, storeKey) {
+  if (!clientActive(store)) {
+    // Paused because the plan or trial ran out: the app stays open so staff can renew.
+    const lapsed = store.status === 'suspended' && await suspendedByExpiry(serviceDb(), store.clientId).catch(() => false)
+    return lapsed ? 'Your plan has ended — renew it in Plan & Credits to keep using try-ons.' : 'Your account is paused — contact Atelier support.'
+  }
   if (store.features[storeKey] === false) return 'This feature is not enabled for your company.'
   return null
 }
@@ -71,7 +77,7 @@ async function gateBlocked(req, res, feature, { storeLookupRequired = false } = 
     })
     return true
   }
-  const blocked = store && storeBlockedMessage(store, spec.storeKey)
+  const blocked = store && await storeBlockedMessage(store, spec.storeKey)
   if (!blocked) return false
   console.info(`[Atelier] blocked ${feature} for company ${store.clientId}: ${blocked}`)
   res.status(403).json({ fallback: true, error: blocked, message: blocked })

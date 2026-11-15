@@ -209,6 +209,8 @@ export interface StoreSession {
   signOut: boolean
   settings: { lowCreditPct: number; graceDays: number }
   notice: { id: string; template: string; subject: string | null; body: string | null; linkUrl: string | null; sentAt: string } | null
+  /** Paused because the plan or trial ran out (not by an admin): the app stays open so staff can renew. Missing on older servers. */
+  suspendedByExpiry?: boolean
 }
 
 /**
