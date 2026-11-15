@@ -3,7 +3,7 @@
 // reads as one product: the wordmark, small-caps titles, buttons, fields,
 // notices, segmented controls, chips, checkboxes, cards, skeletons, empty
 // states, the page frame, the tab bars, toasts and dialogs.
-import { ReactNode, useEffect, useRef, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Text, View, TextInput, TouchableOpacity, Pressable, ActivityIndicator, StyleSheet, ScrollView, Modal,
   Animated, Platform, AccessibilityInfo, useWindowDimensions,
@@ -756,16 +756,17 @@ const hp = StyleSheet.create({
 // ─── Phones / tablets vs computers ───────────────────────────────────────────
 /**
  * A phone or tablet: the iPad / Android apps, or a web browser on a touch
- * device. iPadOS Safari reports itself as a Mac, so a Mac with touch points
- * counts as a tablet; so does any browser whose main pointer is a finger.
- * Touch-screen laptops keep a fine main pointer and stay computers.
+ * device. iPadOS Safari (and Chrome's device mode) report a Mac, so a Mac with
+ * any touch point counts as a tablet (real Macs report none); so does any
+ * browser whose main pointer is a finger. Touch-screen laptops keep a fine
+ * main pointer and stay computers.
  */
 export function isTouchDevice(): boolean {
   if (!web) return true
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
   const ua = navigator.userAgent || ''
   if (/iPad|iPhone|iPod|Android|Mobile|Silk|Kindle/i.test(ua)) return true
-  if (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1) return true
+  if (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 0) return true
   return !!window.matchMedia?.('(pointer: coarse)').matches
 }
 
@@ -775,8 +776,10 @@ export function isTouchDevice(): boolean {
  * phone and tablet (iPad Pro included) keeps the bottom tab bar.
  */
 export function useDesktopLayout(minWidth: number = Layout.desktop): boolean {
-  const { width } = useWindowDimensions()
-  const [touch] = useState(isTouchDevice)
+  const { width, height } = useWindowDimensions()
+  // Checked again on every resize: Chrome's device mode, rotating, or a
+  // tablet's "desktop site" switch change it without a reload.
+  const touch = useMemo(isTouchDevice, [width, height])
   return !touch && width >= minWidth
 }
 
