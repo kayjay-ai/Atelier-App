@@ -21,7 +21,7 @@ const TEMPLATES = {
   low_credits: {
     b2b_store: (r) => ({
       subject: `${r.name}: ${r.creditsLeft} Atelier credits left`,
-      body: `${r.pctLeft}% of your plan credits are left (${r.creditsLeft}). Upgrade or top up your plan so your iPads keep working.`,
+      body: `${r.pctLeft}% of your plan credits are left (${r.creditsLeft}). Upgrade or top up your plan so your devices keep working.`,
     }),
     b2c_user: (r) => ({
       subject: `You have ${r.creditsLeft} try-on${r.creditsLeft === 1 ? '' : 's'} left`,
@@ -31,7 +31,7 @@ const TEMPLATES = {
   out_of_credits: {
     b2b_store: (r) => ({
       subject: `${r.name}: Atelier credits used up`,
-      body: 'Your company has used all its credits, so new try-ons are paused on every iPad. Upgrade or top up your plan to continue.',
+      body: 'Your company has used all its credits, so new try-ons are paused on every device. Upgrade or top up your plan to continue.',
     }),
     b2c_user: (r) => ({
       subject: 'You are out of try-ons',
@@ -41,7 +41,7 @@ const TEMPLATES = {
   plan_ending: {
     b2b_store: (r) => ({
       subject: `${r.name}: your Atelier plan renews on ${r.renewalDate}`,
-      body: `Your plan renews on ${r.renewalDate}. Renew on time so your iPads keep working.`,
+      body: `Your plan renews on ${r.renewalDate}. Renew on time so your devices keep working.`,
     }),
     b2c_user: (r) => ({
       subject: 'Your Atelier plan is ending soon',

@@ -82,7 +82,9 @@ function StoreBanner({ lapsed }: { lapsed: boolean }) {
   const b2b = account?.type === 'b2b_company' ? account : null
   const storeId = b2b?.client.id ?? ''
   const lowPct = session?.settings.lowCreditPct ?? 20
-  const included = b2b?.plan?.creditsIncluded ?? 0
+  // A trial's credits aren't the plan's monthly allowance: no "% left" until a paid cycle starts.
+  const onTrial = b2b?.client.status === 'trial' && !b2b.client.renewalAt
+  const included = onTrial ? 0 : b2b?.plan?.creditsIncluded ?? 0
   const credits = b2b ? usableCredits(b2b.client) : 0
   const low = included > 0 && (credits / included) * 100 <= lowPct
 
@@ -232,7 +234,7 @@ export default function StoreLayout() {
       <FullScreenMessage
         title="Couldn’t load your store"
         icon="alert"
-        body="Check this iPad’s internet connection, then try again."
+        body="Check this device’s internet connection, then try again."
         action={{ label: 'Try again', onPress: () => setAttempt((n) => n + 1) }}
       />
     )
@@ -303,7 +305,7 @@ export default function StoreLayout() {
   if (session?.device?.status === 'blocked') {
     return (
       <FullScreenMessage
-        title="This iPad is blocked"
+        title="This device is blocked"
         body={`Your Atelier admin has blocked this device for ${account.client.companyName}. Contact them if this is a mistake.`}
       />
     )

@@ -197,7 +197,7 @@ export function StoreDrawer({ storeId, section, onClose, onChanged }: {
                 <Section title={`Devices · ${early ? '—' : detail.devices.length}`} onLayout={(y) => { ys.current.devices = y }}>
                   {detail.devices.length === 0 ? (
                     <Text style={d.muted}>{early
-                      ? 'Devices appear here once the manager signs in on the store’s iPads.'
+                      ? 'Devices appear here once the manager signs in on the store’s devices.'
                       : 'No devices have connected yet.'}</Text>
                   ) : detail.devices.map((dev) => (
                     <View key={dev.id} style={d.device}>

@@ -314,7 +314,7 @@ router.post('/api/tryon', async (req, res) => {
     }
     if (await gateBlocked(req, res, 'tryon', { storeLookupRequired: true })) return
     if (caller.device?.status === 'blocked') {
-      const msg = 'This iPad has been blocked — contact your Atelier admin.'
+      const msg = 'This device has been blocked — contact your Atelier admin.'
       return res.status(403).json({ fallback: true, error: msg, message: msg })
     }
   }

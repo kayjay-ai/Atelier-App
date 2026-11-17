@@ -16,7 +16,7 @@ const KINDS = [
 ] as const
 
 const ROLES = [
-  { value: 'store', label: 'Store staff', hint: 'Store iPads' },
+  { value: 'store', label: 'Store staff', hint: 'Store devices' },
   { value: 'owner', label: 'Owner', hint: 'All your stores' },
 ] as const
 

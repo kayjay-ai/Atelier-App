@@ -71,7 +71,7 @@ export default function CompanyScreen() {
           <Card>
             <Text style={s.cardTitle}>Stores</Text>
             {stores.length === 0 ? (
-              <Text style={s.muted}>No stores added yet. Any number of stores and iPads can use Atelier.</Text>
+              <Text style={s.muted}>No stores added yet. Any number of stores and devices can use Atelier.</Text>
             ) : stores.map((st, i) => (
               <View key={st.id} style={[s.storeRow, i > 0 && s.rowBorder]}>
                 <View style={s.storeIcon}><Icon name="company" size={18} color={Colors.secondary} /></View>

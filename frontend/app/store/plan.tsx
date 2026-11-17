@@ -10,7 +10,7 @@ import {
 } from '../../lib/api'
 import { openB2BCheckout, confirmB2BPayment } from '../../lib/b2bCheckout'
 import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
-import { Card, Checkbox, Notice, Page, PageHeader, PillButton, SectionHeader, Sheet, Tag, TextLink } from '../../lib/ui'
+import { Card, Checkbox, Icon, Notice, Page, PageHeader, PillButton, SectionHeader, Sheet, Tag, TextLink } from '../../lib/ui'
 
 // Spec §2.9 — the store pays for its plan and credit top-ups here (Cashfree).
 // Prices, credits and what may be bought come from the server (GET
@@ -78,7 +78,7 @@ function noticeFor(st: B2BPaymentStatus): Notice {
   return { tone: 'info', text: 'We’re still confirming your payment with the bank. This can take a minute — refresh this page shortly.' }
 }
 
-// The three/four plans sit in one row on iPad / desktop; only narrow phones stack them.
+// The three/four plans sit in one row on tablets / desktop; only narrow phones stack them.
 const STACK_BELOW = 560
 
 export default function PlanScreen() {
@@ -139,9 +139,21 @@ export default function PlanScreen() {
   const total = planCredits + topupCredits
   const included = billing?.store.planCreditsIncluded ?? plan?.creditsIncluded ?? 0
   const lowPct = session?.settings.lowCreditPct ?? 20
-  const pct = included > 0 ? Math.min(1, planCredits / included) : planCredits > 0 ? 1 : 0
-  const low = included > 0 && (planCredits / included) * 100 <= lowPct && topupCredits === 0
   const renewalAt = billing?.store.renewalAt ?? client.renewalAt
+  const trialEndsAt = billing?.store.trialEndsAt ?? client.trialEndsAt
+  // A trial's credits aren't the plan's monthly allowance, so "x of 1,000" and
+  // "running low" only mean something once a paid cycle has started.
+  const onTrial = client.status === 'trial' && !renewalAt
+  const cycleAllowance = !onTrial && included > 0 ? included : 0
+  const pct = cycleAllowance > 0 ? Math.min(1, planCredits / cycleAllowance) : 0
+  const low = cycleAllowance > 0 && (planCredits / cycleAllowance) * 100 <= lowPct && topupCredits === 0
+  // When plan credits stop: the end of the cycle, or of the trial.
+  const planCreditsEnd = renewalAt ?? (onTrial ? trialEndsAt : null)
+  const endPassed = !!planCreditsEnd && Date.parse(planCreditsEnd) < Date.now()
+  const periodLine = !planCreditsEnd ? null
+    : onTrial ? `Free trial ${endPassed ? 'ended' : 'ends'} ${fmtDate(planCreditsEnd)}`
+      : `${endPassed ? 'Plan ended' : 'Renews'} ${fmtDate(planCreditsEnd)}`
+  const planName = billing?.store.planName ?? plan?.name ?? null
 
   // Until the server answers, show the plans without GST totals or buttons —
   // GST and what may be bought come only from the server.
@@ -171,34 +183,56 @@ export default function PlanScreen() {
 
   return (
     <Page width="wide">
-      <PageHeader title="Plan & Credits" subtitle="Credits are shared by every iPad in this store." />
+      <PageHeader title="Plan & Credits" subtitle="Credits are shared by every device in this store." />
 
       {notice && (
         <Notice tone={notice.tone === 'ok' ? 'success' : notice.tone === 'error' ? 'error' : 'info'} text={notice.text} onClose={() => setNotice(null)} />
       )}
 
+      {/* What the store has, in reading order: plan → credits to spend → where they come from. */}
       <View style={s.hero}>
-        <View style={s.heroMain}>
-          <View style={s.planRow}>
-            <Tag label={billing?.store.planName ?? plan?.name ?? 'No plan'} tone="neutral" />
-            {client.status === 'trial' && <Tag label={`Trial${client.trialEndsAt ? ` · ends ${fmtDate(client.trialEndsAt)}` : ''}`} tone="warning" />}
+        <View style={s.heroTop}>
+          <View style={{ gap: Space.xs, flexShrink: 1 }}>
+            <Text style={s.heroLabel}>YOUR PLAN</Text>
+            <View style={s.planRow}>
+              <Text style={s.heroPlan}>{planName ?? 'No plan yet'}</Text>
+              {onTrial && <Tag label="Free trial" tone="warning" />}
+            </View>
           </View>
-          <Text style={s.big}>{total.toLocaleString('en-IN')}</Text>
-          <Text style={s.heroLine}>credits available</Text>
-          <View style={s.bar} accessibilityLabel={`${Math.round(pct * 100)}% of plan credits left`}>
-            <View style={[s.barFill, { width: `${Math.round(pct * 100)}%` }, (low || total <= 0) && { backgroundColor: '#E58C7B' }]} />
-          </View>
+          {!!periodLine && (
+            <View style={s.period}>
+              <Icon name="clock" size={16} color={Colors.textOnDarkMuted} />
+              <Text style={s.heroMuted}>{periodLine}</Text>
+            </View>
+          )}
         </View>
-        <View style={s.heroSplit}>
+
+        <View accessible accessibilityLabel={`${total.toLocaleString('en-IN')} credits available`}>
+          <Text style={s.big}>{total.toLocaleString('en-IN')}</Text>
+          <Text style={s.heroLine}>credits available to use</Text>
+        </View>
+
+        <View style={s.split}>
           <View style={s.splitCell}>
-            <Text style={s.splitNum}>{planCredits.toLocaleString('en-IN')}</Text>
-            <Text style={s.heroMuted}>plan credits{included > 0 ? ` of ${included.toLocaleString('en-IN')}` : ''} · expire {fmtDate(renewalAt)}</Text>
+            <Text style={s.heroLabel}>PLAN CREDITS</Text>
+            <Text style={s.splitNum}>
+              {planCredits.toLocaleString('en-IN')}
+              {cycleAllowance > 0 && <Text style={s.splitOf}> of {cycleAllowance.toLocaleString('en-IN')}</Text>}
+            </Text>
+            {cycleAllowance > 0 && (
+              <View style={s.bar} accessibilityLabel={`${Math.round(pct * 100)}% of this month’s plan credits left`}>
+                <View style={[s.barFill, { width: `${Math.round(pct * 100)}%` }, (low || total <= 0) && s.barLow]} />
+              </View>
+            )}
+            <Text style={s.heroMuted}>
+              Used first{planCreditsEnd ? ` · ${endPassed ? 'expired' : 'expire'} ${fmtDate(planCreditsEnd)}` : ''}
+            </Text>
           </View>
           <View style={s.splitCell}>
+            <Text style={s.heroLabel}>TOP-UP CREDITS</Text>
             <Text style={s.splitNum}>{topupCredits.toLocaleString('en-IN')}</Text>
-            <Text style={s.heroMuted}>top-up credits · never expire</Text>
+            <Text style={s.heroMuted}>Used after plan credits · never expire</Text>
           </View>
-          <Text style={s.heroMuted}>Plan credits are used first. Your cycle renews {fmtDate(renewalAt)}.</Text>
         </View>
       </View>
 
@@ -434,19 +468,26 @@ function ConfirmPurchase({ purchase, billing, setupProblem, credits, onClose, on
 
 const s = StyleSheet.create({
   block: { gap: Space.base },
-  hero: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: Space.xl, backgroundColor: Colors.bgDark, borderRadius: Radius.xl, padding: Space.xl,
-  },
-  heroMain: { flexBasis: 280, flexGrow: 1.4, gap: Space.xs },
-  heroSplit: { flexBasis: 260, flexGrow: 1, gap: Space.base, justifyContent: 'flex-end' },
-  planRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Space.sm, marginBottom: Space.sm },
+  hero: { gap: Space.lg, backgroundColor: Colors.bgDark, borderRadius: Radius.xl, padding: Space.xl },
+  heroTop: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: Space.md },
+  heroLabel: { ...Typography.label, color: Colors.textOnDarkMuted },
+  heroPlan: { ...Typography.h2, color: Colors.textOnDark },
+  planRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Space.sm },
+  period: { flexDirection: 'row', alignItems: 'center', gap: Space.xs },
   big: { ...Typography.numeral, fontSize: 64, lineHeight: 70, color: Colors.textOnDark },
   heroLine: { ...Typography.body, color: Colors.textOnDarkMuted },
   heroMuted: { ...Typography.bodySmall, color: Colors.textOnDarkMuted },
-  bar: { height: 8, borderRadius: 4, backgroundColor: 'rgba(250,248,245,0.14)', overflow: 'hidden', marginTop: Space.base },
-  barFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 4 },
-  splitCell: { gap: 2 },
-  splitNum: { ...Typography.numeral, fontSize: 28, lineHeight: 34, color: Colors.textOnDark },
+  bar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(250,248,245,0.14)', overflow: 'hidden', marginVertical: Space.xs },
+  barFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3 },
+  barLow: { backgroundColor: '#E58C7B' },
+  // The two sources side by side, wrapping under each other on narrow screens.
+  split: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: Space.lg,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(250,248,245,0.2)', paddingTop: Space.lg,
+  },
+  splitCell: { flexBasis: 220, flexGrow: 1, gap: Space.xs },
+  splitNum: { ...Typography.numeral, fontSize: 32, lineHeight: 38, color: Colors.textOnDark },
+  splitOf: { ...Typography.body, color: Colors.textOnDarkMuted },
 
   plans: { flexDirection: 'row', gap: Space.md },
   plansStacked: { flexDirection: 'column' },

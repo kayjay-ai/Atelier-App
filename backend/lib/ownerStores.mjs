@@ -311,7 +311,7 @@ async function sendInviteEmail(ctx, invite, store, appBase) {
     to: invite.manager_email,
     subject: `${orgName(ctx.company)} invited you to manage ${store.store_name} on Atelier`,
     body: `Hi ${first},\n\n${who} has invited you to manage ${store.store_name}${store.city ? ` (${store.city})` : ''} ` +
-      'on Atelier, the virtual try-on app for your store’s iPads.' +
+      'on Atelier, the virtual try-on app for your store’s devices.' +
       (invite.note ? `\n\nA note from ${who}:\n“${invite.note}”` : '') +
       '\n\nAccept the invite to set up your store login. The link works once and expires in 7 days.',
     link: { url: inviteUrl(appBase, invite.id, invite.token_nonce), label: 'Accept invite' },

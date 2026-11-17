@@ -19,7 +19,7 @@ const STAGE = {
   },
   company: {
     title: 'Atelier For Stores',
-    line: 'Walk-in try-ons on your store iPads, and every store’s devices, credits and payments in one place.',
+    line: 'Walk-in try-ons on your store devices, and every store’s devices, credits and payments in one place.',
   },
 } as const
 

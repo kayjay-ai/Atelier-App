@@ -251,7 +251,7 @@ export default function StoreHomeScreen() {
             <View style={s.bigIcon}><Icon name="gallery" size={26} color={Colors.secondary} /></View>
             <View style={{ gap: Space.xs }}>
               <Text {...displayProps(28)} style={s.bigTitle}>Upload garment</Text>
-              <Text style={s.bigHint}>Pick the piece from this iPad’s gallery</Text>
+              <Text style={s.bigHint}>Pick the piece from this device’s gallery</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -452,7 +452,7 @@ export default function StoreHomeScreen() {
           <View style={s.steps}>
             {[
               ['New customer', 'Create their folder and photograph them, head to feet.'],
-              ['Upload garment', 'Pick the piece from this iPad’s gallery.'],
+              ['Upload garment', 'Pick the piece from this device’s gallery.'],
               ['Try it on', 'Choose the customer. The result is saved to their folder.'],
             ].map(([title, body], i) => (
               <View key={title} style={s.step}>
