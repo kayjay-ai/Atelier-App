@@ -18,9 +18,11 @@ const isMissingTable = (msg?: string) =>
   !!msg && /does not exist|schema cache|could not find the (table|function)/i.test(msg)
 
 // Never select store_password_hash — the app has no use for it.
-const STORE_SELECT =
+const STORE_SELECT_BASE =
   'store_id, store_name, store_address, city, state, pincode, subscription_plan, credits_balance, ' +
   'trial_ends_at, renewal_at, b2b_companies(company_name, brand_name, logo_url, gstin, primary_contact_name, manager_email, primary_contact)'
+// The store's own manager details, shown on Company Profile.
+const STORE_SELECT = `${STORE_SELECT_BASE}, store_email, manager_name, manager_phone`
 
 function toPlan(row: any): Plan {
   return {
@@ -57,9 +59,11 @@ function toClient(row: any, state: { status: ClientStatus; usableCredits: number
     companyName: c.brand_name || c.company_name || row.store_name,
     storeName: row.store_name,
     logoUrl: c.logo_url ?? null,
-    contactName: c.primary_contact_name ?? null,
-    contactEmail: c.manager_email ?? null,
-    contactPhone: c.primary_contact ?? null,
+    // The store's own manager (named in the owner's invite) and login email;
+    // the company's contact only for a store set up without one.
+    contactName: row.manager_name || c.primary_contact_name || null,
+    contactEmail: row.store_email || c.manager_email || null,
+    contactPhone: row.manager_phone || c.primary_contact || null,
     gstin: c.gstin ?? null,
     billingAddress: address || null,
     planId: row.subscription_plan ?? null,
@@ -100,7 +104,12 @@ export async function isCompanyLogin(email: string | null | undefined): Promise<
 
 /** Resolve the signed-in user's account. Throws on a real (network/DB) failure. */
 export async function fetchAccount(userId: string, email?: string | null): Promise<Account> {
-  const row = await storeRowFor(email, STORE_SELECT)
+  // If the database won't return the manager columns, sign in without them
+  // (Company Profile then shows the company contact) rather than not at all.
+  const row = await storeRowFor(email, STORE_SELECT).catch((e) => {
+    if (/column|permission denied/i.test(String(e?.message ?? ''))) return storeRowFor(email, STORE_SELECT_BASE)
+    throw e
+  })
   if (!row) return { type: 'b2c_customer' }
 
   const client = toClient(row, await storeState(row))

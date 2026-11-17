@@ -61,7 +61,7 @@ export default function CompanyScreen() {
               <Text style={s.muted}>Kept up to date by Atelier. Contact us to change them.</Text>
             </View>
             <View style={s.fields}>
-              <Detail label="Contact person" value={client.contactName} />
+              <Detail label="Store manager" value={client.contactName} />
               <Detail label="Email" value={client.contactEmail} />
               <Detail label="Phone" value={client.contactPhone} />
               <Detail label="GSTIN" value={client.gstin} />

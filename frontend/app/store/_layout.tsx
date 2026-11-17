@@ -34,9 +34,7 @@ function StoreName() {
   return (
     <View style={{ flexShrink: 1, minWidth: 0 }}>
       <Text style={h.sub} numberOfLines={1}>ATELIER  ·  STORE</Text>
-      <Text style={h.company} numberOfLines={1}>
-        {companyName}{storeName && storeName !== companyName ? <Text style={h.store}>{`  ${storeName}`}</Text> : null}
-      </Text>
+      <Text style={h.company} numberOfLines={1}>{storeName || companyName}</Text>
     </View>
   )
 }
@@ -267,7 +265,7 @@ export default function StoreLayout() {
           <View style={h.row}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={h.sub}>QUASAR’S ATELIER  ·  STORE PAUSED</Text>
-              <Text style={h.company} numberOfLines={1}>{account.client.companyName}</Text>
+              <Text style={h.company} numberOfLines={1}>{account.client.storeName || account.client.companyName}</Text>
             </View>
             <PillButton label="Close" variant="outline" size="sm" icon="close"
               onPress={() => { setLockedPlanOpen(false); if (onPlanRoute) router.replace('/store') }} />
@@ -346,7 +344,6 @@ const h = StyleSheet.create({
   row:  { flexDirection: 'row', alignItems: 'center', gap: Space.md, paddingHorizontal: Space.lg, paddingVertical: Space.md },
   sub:  { ...Typography.label, fontSize: 9, letterSpacing: 2.5, color: Colors.accentInk },
   company: { ...Typography.h2, fontSize: 22, lineHeight: 28 },
-  store: { ...Typography.body, ...Weight.medium, color: Colors.textMuted },
 })
 
 const b = StyleSheet.create({
