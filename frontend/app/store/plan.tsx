@@ -141,12 +141,12 @@ export default function PlanScreen() {
   const lowPct = session?.settings.lowCreditPct ?? 20
   const renewalAt = billing?.store.renewalAt ?? client.renewalAt
   const trialEndsAt = billing?.store.trialEndsAt ?? client.trialEndsAt
-  // A trial's credits aren't the plan's monthly allowance, so "x of 1,000" and
-  // "running low" only mean something once a paid cycle has started.
+  // "x of 1,000 left" is measured against the plan's monthly allowance, also
+  // during a trial. A trial starts with fewer credits than that, so "running
+  // low" only applies once a paid cycle has started.
   const onTrial = client.status === 'trial' && !renewalAt
-  const cycleAllowance = !onTrial && included > 0 ? included : 0
-  const pct = cycleAllowance > 0 ? Math.min(1, planCredits / cycleAllowance) : 0
-  const low = cycleAllowance > 0 && (planCredits / cycleAllowance) * 100 <= lowPct && topupCredits === 0
+  const pct = included > 0 ? Math.min(1, planCredits / included) : 0
+  const low = !onTrial && included > 0 && (planCredits / included) * 100 <= lowPct && topupCredits === 0
   // When plan credits stop: the end of the cycle, or of the trial.
   const planCreditsEnd = renewalAt ?? (onTrial ? trialEndsAt : null)
   const endPassed = !!planCreditsEnd && Date.parse(planCreditsEnd) < Date.now()
@@ -207,23 +207,27 @@ export default function PlanScreen() {
           )}
         </View>
 
-        <View accessible accessibilityLabel={`${total.toLocaleString('en-IN')} credits available`}>
-          <Text style={s.big}>{total.toLocaleString('en-IN')}</Text>
-          <Text style={s.heroLine}>credits available to use</Text>
+        <View style={s.balance}>
+          <View accessible accessibilityLabel={`${total.toLocaleString('en-IN')} credits available`}>
+            <Text style={s.big}>{total.toLocaleString('en-IN')}</Text>
+            <Text style={s.heroLine}>credits available to use</Text>
+          </View>
+          {included > 0 && (
+            <View style={s.allowance}>
+              <Text style={s.heroMuted}>
+                {planCredits.toLocaleString('en-IN')} of {included.toLocaleString('en-IN')} {topupCredits > 0 ? 'plan credits' : 'credits'} left
+              </Text>
+              <View style={s.bar} accessibilityLabel={`${Math.round(pct * 100)}% of plan credits left`}>
+                <View style={[s.barFill, { width: `${Math.round(pct * 100)}%` }, (low || total <= 0) && s.barLow]} />
+              </View>
+            </View>
+          )}
         </View>
 
         <View style={s.split}>
           <View style={s.splitCell}>
             <Text style={s.heroLabel}>PLAN CREDITS</Text>
-            <Text style={s.splitNum}>
-              {planCredits.toLocaleString('en-IN')}
-              {cycleAllowance > 0 && <Text style={s.splitOf}> of {cycleAllowance.toLocaleString('en-IN')}</Text>}
-            </Text>
-            {cycleAllowance > 0 && (
-              <View style={s.bar} accessibilityLabel={`${Math.round(pct * 100)}% of this month’s plan credits left`}>
-                <View style={[s.barFill, { width: `${Math.round(pct * 100)}%` }, (low || total <= 0) && s.barLow]} />
-              </View>
-            )}
+            <Text style={s.splitNum}>{planCredits.toLocaleString('en-IN')}</Text>
             <Text style={s.heroMuted}>
               Used first{planCreditsEnd ? ` · ${endPassed ? 'expired' : 'expire'} ${fmtDate(planCreditsEnd)}` : ''}
             </Text>
@@ -477,8 +481,10 @@ const s = StyleSheet.create({
   big: { ...Typography.numeral, fontSize: 64, lineHeight: 70, color: Colors.textOnDark },
   heroLine: { ...Typography.body, color: Colors.textOnDarkMuted },
   heroMuted: { ...Typography.bodySmall, color: Colors.textOnDarkMuted },
-  bar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(250,248,245,0.14)', overflow: 'hidden', marginVertical: Space.xs },
-  barFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3 },
+  balance: { gap: Space.base },
+  allowance: { gap: Space.sm, maxWidth: 520 },
+  bar: { height: 8, borderRadius: 4, backgroundColor: 'rgba(250,248,245,0.14)', overflow: 'hidden' },
+  barFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 4 },
   barLow: { backgroundColor: '#E58C7B' },
   // The two sources side by side, wrapping under each other on narrow screens.
   split: {
@@ -487,7 +493,6 @@ const s = StyleSheet.create({
   },
   splitCell: { flexBasis: 220, flexGrow: 1, gap: Space.xs },
   splitNum: { ...Typography.numeral, fontSize: 32, lineHeight: 38, color: Colors.textOnDark },
-  splitOf: { ...Typography.body, color: Colors.textOnDarkMuted },
 
   plans: { flexDirection: 'row', gap: Space.md },
   plansStacked: { flexDirection: 'column' },
