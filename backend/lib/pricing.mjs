@@ -17,22 +17,22 @@ export const FREE_CREDITS = 3
 export const PRICING = {
   per_generation: {
     type: 'per_generation',
-    label: 'Pay per generation',
-    blurb: 'One generation, on demand',
+    label: 'Starter',
+    blurb: 'One try-on, on demand',
     amountInr: 15,
     credits: 1,
   },
   pack_30: {
     type: 'pack_30',
-    label: 'Starter pack',
-    blurb: '30 credits',
+    label: 'Plus',
+    blurb: '30 try-ons',
     amountInr: 350,
     credits: 30,
   },
   pack_100: {
     type: 'pack_100',
-    label: 'Value pack',
-    blurb: '100 credits',
+    label: 'Pro',
+    blurb: '100 try-ons',
     amountInr: 700,
     credits: 100,
   },

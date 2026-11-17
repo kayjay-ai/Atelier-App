@@ -9,9 +9,9 @@ import type { PricingOption } from './types'
 export const FREE_CREDITS = 3
 
 export const PRICING_OPTIONS: PricingOption[] = [
-  { type: 'per_generation', label: 'Pay per generation', blurb: 'One generation, on demand', amountInr: 15, credits: 1 },
-  { type: 'pack_30', label: 'Starter pack', blurb: '30 credits', amountInr: 350, credits: 30 },
-  { type: 'pack_100', label: 'Value pack', blurb: '100 credits', amountInr: 700, credits: 100 },
+  { type: 'per_generation', label: 'Starter', blurb: 'One try-on, on demand', amountInr: 15, credits: 1 },
+  { type: 'pack_30', label: 'Plus', blurb: '30 try-ons', amountInr: 350, credits: 30 },
+  { type: 'pack_100', label: 'Pro', blurb: '100 try-ons', amountInr: 700, credits: 100 },
 ]
 
 // Indian digit grouping everywhere: ₹18,000 · ₹1,26,000

@@ -98,7 +98,6 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
       <View style={[s.grid, stack && s.gridStacked]} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
         {options.map((opt) => {
           const featured = opt.type === recommended
-          const perTry = opt.credits > 1 ? `${inr(Math.round((opt.amountInr / opt.credits) * 10) / 10)} per try-on` : opt.blurb
           return (
             <View key={opt.type} style={[s.card, stack ? s.cardStack : s.cardRow, featured && s.cardFeatured]}>
               <View style={s.cardHead}>
@@ -107,10 +106,10 @@ export function PurchaseOptions({ onPurchased }: { onPurchased?: (m: Membership 
               </View>
               <Text style={[s.price, featured && s.onDark]} numberOfLines={1}>{inr(opt.amountInr)}</Text>
               <Text style={[s.credits, featured && s.onDark]}>{opt.credits} try-on credit{opt.credits === 1 ? '' : 's'}</Text>
-              {!!perTry && <Text style={[s.blurb, featured && s.onDarkMuted]}>{perTry}</Text>}
               <View style={s.spacer} />
               <PillButton
-                label={`Choose ${opt.label}`}
+                label="Choose"
+                accessibilityLabel={`Choose ${opt.label}`}
                 variant={featured ? 'gold' : 'outline'}
                 size="md"
                 loading={busy === opt.type}
@@ -142,9 +141,7 @@ const s = StyleSheet.create({
   name:    { ...Typography.h3 },
   price:   { ...Typography.numeral, fontSize: 36, lineHeight: 44, marginTop: Space.sm },
   credits: { ...Typography.body, ...Weight.medium },
-  blurb:   { ...Typography.caption },
   onDark:  { color: Colors.textOnDark },
-  onDarkMuted: { color: Colors.textOnDarkMuted },
   note:    { ...Typography.caption, textAlign: 'center' },
   spacer:  { flexGrow: 1 }, // pins the button to the bottom so the row's buttons line up
 })
