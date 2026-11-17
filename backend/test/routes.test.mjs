@@ -19,7 +19,7 @@ const ROUTES = [
   'GET /api/owner/me', 'GET /api/owner/dashboard/summary', 'GET /api/owner/stores', 'GET /api/owner/stores/:id',
   'POST /api/owner/stores', 'POST /api/owner/stores/:id/invite/resend', 'GET /api/owner/stores/:id/invite/link',
   'PATCH /api/owner/stores/:id/invite', 'DELETE /api/owner/stores/:id/invite', 'DELETE /api/owner/stores/:id',
-  'POST /api/owner/stores/:id/deactivate', 'GET /api/owner/profile', 'PATCH /api/owner/profile',
+  'POST /api/owner/stores/:id/deactivate', 'POST /api/owner/stores/:id/remove', 'GET /api/owner/profile', 'PATCH /api/owner/profile',
   'POST /api/owner/profile/password', 'GET /api/owner/sessions', 'DELETE /api/owner/sessions',
   'GET /api/owner/notifications', 'GET /api/owner/notifications/unread-count', 'POST /api/owner/notifications/read-all',
   'PATCH /api/owner/notifications/:id', 'DELETE /api/owner/notifications/:id',

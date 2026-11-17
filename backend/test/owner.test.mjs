@@ -88,6 +88,8 @@ test('owner routes refuse anyone without an owner session', async () => {
   }
   const fake = await get(app.url, '/api/owner/me', { Authorization: 'Bearer a.b.c' })
   assert.equal(fake.status, 401)
+  const remove = await post(app.url, '/api/owner/stores/TEST01MUM/remove', {})
+  assert.equal(remove.status, 401, 'remove store')
 })
 
 test('public owner routes validate before touching anything', async () => {

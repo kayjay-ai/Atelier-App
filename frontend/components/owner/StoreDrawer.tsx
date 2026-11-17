@@ -193,6 +193,9 @@ export function StoreDrawer({ storeId, section, onClose, onChanged }: {
                   {['active', 'pending', 'low_credits', 'expired'].includes(st.status) && (
                     <Btn small kind="ghost" label="Deactivate store" onPress={() => storeActions.deactivate(st, changed)} />
                   )}
+                  {st.status === 'deactivated' && (
+                    <Btn small kind="ghost" label="Remove store" onPress={() => storeActions.removeDeactivated(st, () => { onChanged(); close() })} />
+                  )}
                 </View>
 
                 <Section title={`Devices · ${early ? '—' : detail.devices.length}`} onLayout={(y) => { ys.current.devices = y }}>

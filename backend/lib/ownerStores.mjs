@@ -92,19 +92,35 @@ function toRow(r) {
 }
 
 async function loadRows(companyId) {
-  const { data, error } = await db().from('b2b_owner_stores').select('*').eq('company_id', companyId)
+  const [{ data, error }, removed] = await Promise.all([
+    db().from('b2b_owner_stores').select('*').eq('company_id', companyId),
+    removedStoreIds(companyId),
+  ])
   check(error)
-  return data ?? []
+  return (data ?? []).filter((r) => !removed.has(r.store_id))
+}
+
+/**
+ * Stores the owner removed but that are kept because they have payment
+ * records (b2b_owner_removed_stores). Empty until that migration is applied.
+ */
+async function removedStoreIds(companyId) {
+  const { data, error } = await db().from('b2b_owner_removed_stores').select('store_id').eq('company_id', companyId)
+  if (isMissingSchema(error)) return new Set()
+  check(error)
+  return new Set((data ?? []).map((r) => r.store_id))
 }
 
 async function rowFor(ctx, storeId) {
   if (typeof storeId !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(storeId)) {
     throw new OwnerError(404, 'not_found', 'This store isn’t in your organization.')
   }
-  const { data, error } = await db().from('b2b_owner_stores').select('*')
-    .eq('company_id', ctx.company.company_id).eq('store_id', storeId).maybeSingle()
+  const [{ data, error }, removed] = await Promise.all([
+    db().from('b2b_owner_stores').select('*').eq('company_id', ctx.company.company_id).eq('store_id', storeId).maybeSingle(),
+    removedStoreIds(ctx.company.company_id),
+  ])
   check(error)
-  if (!data) throw new OwnerError(404, 'not_found', 'This store isn’t in your organization.')
+  if (!data || removed.has(storeId)) throw new OwnerError(404, 'not_found', 'This store isn’t in your organization.')
   return data
 }
 
@@ -489,6 +505,60 @@ export async function deactivateStore(ctx, storeId) {
     name: r.store_name, devicesSignedOut: devices?.length ?? 0, creditsFrozen: r.usable_credits,
   })
   return { store: toRow(await rowFor(ctx, storeId)) }
+}
+
+const PHOTO_BUCKET = 'customer-photos'
+
+/** Deletes a store's customer folders and their photos (as the daily expiry job does). */
+async function deleteStoreFolders(supabase, storeId) {
+  const { data: folders, error } = await supabase.from('customer_folders').select('id').eq('store_id', storeId)
+  if (isMissingSchema(error)) return 0
+  check(error)
+  for (const f of folders ?? []) {
+    const prefix = `${storeId}/${f.id}`
+    const { data: files, error: listErr } = await supabase.storage.from(PHOTO_BUCKET).list(prefix, { limit: 1000 })
+    if (listErr) throw listErr
+    if (files?.length) {
+      const { error: rmErr } = await supabase.storage.from(PHOTO_BUCKET).remove(files.map((x) => `${prefix}/${x.name}`))
+      if (rmErr) throw rmErr
+    }
+    const { error: delErr } = await supabase.from('customer_folders').delete().eq('id', f.id)
+    check(delErr)
+  }
+  return folders?.length ?? 0
+}
+
+/**
+ * Remove a deactivated store. Its customer folders and photos are deleted.
+ * A store with no payment records is deleted outright (devices, invites and
+ * settings go with it). Payments and Terms acceptances are tax records the
+ * database refuses to delete, so a store that has them is only taken out of
+ * the owner portal (b2b_owner_removed_stores) and the records stay.
+ */
+export async function removeDeactivatedStore(ctx, storeId) {
+  const r = await rowFor(ctx, storeId)
+  if (r.owner_status !== 'deactivated') {
+    throw new OwnerError(409, 'not_deactivated', 'Deactivate the store before removing it.')
+  }
+  const supabase = db()
+  const folders = await deleteStoreFolders(supabase, storeId)
+
+  const { error: delErr } = await supabase.from('b2b_stores').delete()
+    .eq('store_id', storeId).eq('company_id', ctx.company.company_id).eq('status', 'inactive')
+  let kept = false
+  if (delErr) {
+    if (delErr.code !== '23503') check(delErr) // 23503: payment / Terms records refer to it
+    const { error: hideErr } = await supabase.from('b2b_owner_removed_stores').upsert({
+      store_id: storeId, company_id: ctx.company.company_id, removed_by: ctx.owner.email,
+    })
+    if (isMissingSchema(hideErr)) {
+      throw new OwnerError(503, 'not_set_up', 'This store has payment records, so it can’t be removed until Atelier finishes a database update. Contact Atelier support.')
+    }
+    check(hideErr)
+    kept = true
+  }
+  await audit(auditCtx(ctx), 'store_removed', storeId, { name: r.store_name, foldersDeleted: folders, paymentRecordsKept: kept })
+  return { ok: true, paymentRecordsKept: kept }
 }
 
 // ── The manager's side: accepting an invite (public, token in the link) ──────

@@ -7,7 +7,7 @@ import {
 } from '../lib/ownerAuth.mjs'
 import {
   summary, queryStores, storeDetail, addStore, resendInvite, inviteLink, changeInviteEmail,
-  removeInvitedStore, deactivateStore, readInvite, acceptInvite,
+  removeInvitedStore, deactivateStore, removeDeactivatedStore, readInvite, acceptInvite,
 } from '../lib/ownerStores.mjs'
 import { listNotifications, unreadCount, setRead, markAllRead, deleteNotification } from '../lib/ownerNotify.mjs'
 
@@ -130,6 +130,9 @@ router.delete('/api/owner/stores/:id', ownerRoute('owner delete store', (ctx, re
   removeInvitedStore(ctx, req.params.id, { action: 'delete' })))
 router.post('/api/owner/stores/:id/deactivate', ownerRoute('owner deactivate store', (ctx, req) =>
   deactivateStore(ctx, req.params.id)))
+// Remove a deactivated store (kept out of sight when it has payment records).
+router.post('/api/owner/stores/:id/remove', ownerRoute('owner remove store', (ctx, req) =>
+  removeDeactivatedStore(ctx, req.params.id)))
 
 // Profile: name, phone and notification preferences are editable.
 router.get('/api/owner/profile', ownerRoute('owner profile', (ctx) => getProfile(ctx)))

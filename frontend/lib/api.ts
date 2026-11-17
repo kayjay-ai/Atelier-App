@@ -566,6 +566,8 @@ export const changeStoreInviteEmail = (id: string, email: string) => ownerCall<I
 export const revokeStoreInvite = (id: string) => ownerCall<{ ok: true }>('DELETE', `${storePath(id)}/invite`)
 export const deleteInvitedStore = (id: string) => ownerCall<{ ok: true }>('DELETE', storePath(id))
 export const deactivateOwnerStore = (id: string) => ownerCall<{ store: OwnerStoreRow }>('POST', `${storePath(id)}/deactivate`, {})
+/** Remove a deactivated store; one with payment records is only hidden (they're kept). */
+export const removeOwnerStore = (id: string) => ownerCall<{ ok: true; paymentRecordsKept: boolean }>('POST', `${storePath(id)}/remove`, {})
 
 export interface OwnerNotificationLink { screen: 'store' | 'profile' | 'offer' | 'gift_card' | 'add-store'; storeId?: string; section?: string }
 export interface OwnerNotification {

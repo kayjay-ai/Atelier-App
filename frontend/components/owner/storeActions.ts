@@ -1,6 +1,6 @@
 import {
   changeStoreInviteEmail, deactivateOwnerStore, deleteInvitedStore, fetchStoreInviteLink,
-  resendStoreInvite, revokeStoreInvite, type OwnerStoreRow,
+  removeOwnerStore, resendStoreInvite, revokeStoreInvite, type OwnerStoreRow,
 } from '../../lib/api'
 import { copyText, num, ownerErrorText } from '../../lib/owner'
 import { confirmDialog, promptDialog, toast, type MenuItem } from './kit'
@@ -9,7 +9,7 @@ import { confirmDialog, promptDialog, toast, type MenuItem } from './kit'
 //   Invited         Resend invite · Copy invite link · Edit manager email · Revoke invite
 //   Invite expired  Resend invite · Delete
 //   Active / Pending / Low credits / Expired   View details · Deactivate store
-//   Deactivated     View details
+//   Deactivated     View details · Remove store
 
 const looksLikeEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
 
@@ -77,6 +77,19 @@ export const storeActions = {
     done()
   }),
 
+  removeDeactivated: (row: OwnerStoreRow, done: () => void) => run(async () => {
+    const ok = await confirmDialog({
+      title: `Remove ${row.name} completely?`,
+      body: `${row.name} disappears from your dashboard, and its customer folders and photos are deleted. ` +
+        'This can’t be undone. Any payment records are kept for tax purposes.',
+      confirmLabel: 'Remove store', danger: true,
+    })
+    if (!ok) return
+    await removeOwnerStore(row.id)
+    toast(`${row.name} was removed.`)
+    done()
+  }),
+
   deactivate: (row: OwnerStoreRow, done: () => void) => run(async () => {
     const devices = row.devices
     const ok = await confirmDialog({
@@ -111,7 +124,10 @@ export function storeMenu(row: OwnerStoreRow, { reload, open }: { reload: () => 
         { label: 'Delete', icon: 'trash', danger: true, onPress: () => storeActions.remove(row, reload) },
       ]
     case 'deactivated':
-      return [{ label: 'View details', icon: 'info', onPress: open }]
+      return [
+        { label: 'View details', icon: 'info', onPress: open },
+        { label: 'Remove store', icon: 'trash', danger: true, onPress: () => storeActions.removeDeactivated(row, reload) },
+      ]
     default:
       return [
         { label: 'View details', icon: 'info', onPress: open },
