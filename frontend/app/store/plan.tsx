@@ -240,7 +240,9 @@ export default function PlanScreen() {
         </View>
       </View>
 
-      {total <= 0
+      {total <= 0 && !renewalAt && !trialEndsAt
+        ? <Notice tone="info" title="Choose a plan to start" text="Pick a plan below. Its credits are added as soon as the payment goes through." />
+        : total <= 0
         ? <Notice tone="error" title="Credits used up" text="New try-ons are paused until you renew, upgrade or add top-up credits." />
         : low && <Notice tone="warning" text={`Running low — ${lowPct}% or less of your plan credits are left.`} />}
       {!!billingError && <Notice tone="error" text={billingError} actionLabel="Try again" onAction={reloadAll} />}

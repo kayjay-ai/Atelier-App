@@ -125,6 +125,9 @@ function StoreBanner({ lapsed }: { lapsed: boolean }) {
     warning = { key: `renewal:${client.renewalAt}`, tone: 'error', text: pauseAt > now
       ? `Your plan renewal is overdue — try-ons pause on ${fmtDay(pauseAt)} unless you renew in Plan & Credits.`
       : 'Your plan has expired — renew it in Plan & Credits.' }
+  } else if (credits <= 0 && !client.renewalAt && !client.trialEndsAt) {
+    // A store that has never had a plan or trial (just accepted its invite).
+    warning = { key: 'noplan', tone: 'warn', text: 'Welcome to Atelier — choose a plan in Plan & Credits to start try-ons.' }
   } else if (credits <= 0) {
     warning = { key: 'out', tone: 'error', text: 'Credits used up — new try-ons are paused. Renew, upgrade or buy top-up credits in Plan & Credits.' }
   } else if (low) {

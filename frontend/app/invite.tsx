@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ApiError, acceptStoreInvite, fetchStoreInvite, type StoreInvite } from '../lib/api'
-import { passwordOk, usePrefill } from '../lib/owner'
+import { dropOwnerSession, passwordOk, usePrefill } from '../lib/owner'
+import { supabase } from '../lib/supabaseClient'
+import { useAccountStore } from '../lib/account'
 import { Colors, Typography, Space } from '../lib/theme'
 import { Loading } from '../lib/ui'
 import { AuthShell } from '../components/owner/AuthShell'
@@ -11,7 +13,8 @@ import { Banner, Btn, Field, PasswordChecklist, PasswordField } from '../compone
 // ─── A store manager accepts an owner's invite (/invite?token=…) ──────────────
 // Store and email come prefilled from the invite. Accepting sets up the store
 // login (that email + a new password) and moves the store Invited → Pending;
-// then the manager signs in under Company › Store staff and buys a package.
+// the manager is then signed in to the store app on Plan & Credits to buy a
+// package (an existing Atelier account signs in with its own password first).
 
 export default function AcceptInvite() {
   const { token } = useLocalSearchParams<{ token?: string }>()
@@ -37,14 +40,32 @@ export default function AcceptInvite() {
     if (!invite || !token) return
     if (!invite.hasAccount && (!passwordOk(pw) || pw !== pw2)) return
     setBusy(true); setProblem(null)
+    let r: Awaited<ReturnType<typeof acceptStoreInvite>>
     try {
-      const r = await acceptStoreInvite(String(token), invite.hasAccount ? undefined : pw)
-      toSignIn(r.email, r.hadAccount
-        ? `You’re all set. Sign in with your existing Atelier password to open ${r.storeName}.`
-        : `You’re all set. Sign in with your new password to open ${r.storeName}.`)
+      r = await acceptStoreInvite(String(token), invite.hasAccount ? undefined : pw)
     } catch (e: any) {
       setProblem({ text: e?.message ?? 'Couldn’t accept the invite. Try again.', code: e instanceof ApiError ? e.code : null })
       setBusy(false)
+      return
+    }
+    // This browser now belongs to the store manager: forget any other login on
+    // it (e.g. the owner who sent the invite, testing on the same computer),
+    // or sign-in would open that account instead of the store app.
+    await dropOwnerSession()
+    if (r.hadAccount) {
+      toSignIn(r.email, `You’re all set. Sign in with your existing Atelier password to open ${r.storeName}.`)
+      return
+    }
+    // New login: sign straight in to the store app, on Plan & Credits so the
+    // store can buy its first credits.
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: r.email, password: pw })
+      if (error) throw error
+      const account = await useAccountStore.getState().load()
+      if (account?.type !== 'b2b_company') throw new Error('not a store login')
+      router.replace('/store/plan')
+    } catch {
+      toSignIn(r.email, `You’re all set. Sign in with your new password to open ${r.storeName}.`)
     }
   }
 

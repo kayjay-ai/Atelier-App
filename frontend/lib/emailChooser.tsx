@@ -25,7 +25,9 @@ export function composeEmail(draft: EmailDraft) {
 export function EmailChooserHost() {
   const draft = useChooser((s) => s.draft)
   const [copied, setCopied] = useState<'yes' | 'failed' | null>(null)
-  useEffect(() => { setCopied(null) }, [draft])
+  // 'checking' while we wait to see whether an email app took the link.
+  const [app, setApp] = useState<'checking' | 'none' | null>(null)
+  useEffect(() => { setCopied(null); setApp(null) }, [draft])
   if (!draft) return null
   const close = () => useChooser.setState({ draft: null })
 
@@ -35,9 +37,30 @@ export function EmailChooserHost() {
       onPress: () => { window.open(gmailComposeUrl(draft), '_blank', 'noopener'); close() },
     },
     {
-      icon: 'mail', label: 'Open email app', hint: 'Outlook, Apple Mail or your default app',
+      icon: app === 'none' ? 'alert' : 'mail',
+      label: app === 'checking' ? 'Opening your email app…' : 'Open email app',
+      hint: app === 'none'
+        ? 'No email app opened — this computer has none set up for email links. Use Gmail or copy the address.'
+        : 'Outlook, Apple Mail or your default app',
       // Same tab: a mailto: link hands over to the app and the page stays put.
-      onPress: () => { window.location.href = mailtoUrl(draft); close() },
+      // The browser gives no answer when no app is set up for email links, so
+      // watch for the page losing focus (an app or the "open with" prompt
+      // opening); if it doesn't within a moment, say so.
+      onPress: () => {
+        if (app === 'checking') return
+        let opened = false
+        const left = () => { opened = true }
+        window.addEventListener('blur', left)
+        document.addEventListener('visibilitychange', left)
+        setApp('checking')
+        window.location.href = mailtoUrl(draft)
+        setTimeout(() => {
+          window.removeEventListener('blur', left)
+          document.removeEventListener('visibilitychange', left)
+          if (opened) close()
+          else setApp('none')
+        }, 1500)
+      },
     },
     {
       icon: copied === 'yes' ? 'check' : 'copy',
