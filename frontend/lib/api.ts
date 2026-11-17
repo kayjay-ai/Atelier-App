@@ -600,4 +600,4 @@ export const deleteOwnerNotification = (id: string) => ownerCall<{ ok: true }>('
 export interface StoreInvite { storeName: string; city: string; organization: string; managerName: string; managerEmail: string; hasAccount: boolean; expiresAt: string }
 export const fetchStoreInvite = (token: string) => ownerCall<StoreInvite>('GET', `/api/invites/${encodeURIComponent(token)}`, undefined, false)
 export const acceptStoreInvite = (token: string, password?: string) =>
-  ownerCall<{ email: string; storeName: string; hadAccount: boolean }>('POST', `/api/invites/${encodeURIComponent(token)}/accept`, { password }, false)
+  ownerCall<{ email: string; storeName: string; hadAccount: boolean; passwordSet?: boolean }>('POST', `/api/invites/${encodeURIComponent(token)}/accept`, { password }, false)

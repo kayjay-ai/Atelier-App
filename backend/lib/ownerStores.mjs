@@ -609,7 +609,8 @@ export async function readInvite(token, { ip }) {
 /**
  * The manager accepts: their store login is created (or their existing Atelier
  * account becomes the store login), the store moves to Pending and the owner
- * is told.
+ * is told. An existing account may set a new password here: the link was
+ * emailed to that inbox, the same proof a password-reset email relies on.
  */
 export async function acceptInvite(token, { password }, { ip }) {
   if (!inviteIdOf(token)) throw new OwnerError(410, 'invalid_invite', INVALID_INVITE)
@@ -618,7 +619,8 @@ export async function acceptInvite(token, { password }, { ip }) {
   assertOpen(inv)
   const email = normEmail(inv.manager_email)
   const existing = await authUserFor(email)
-  if (!existing) {
+  const setPassword = !existing || (typeof password === 'string' && password.length > 0)
+  if (setPassword) {
     const problems = passwordProblems(password)
     if (problems.length) throw new OwnerError(400, 'weak_password', 'Choose a stronger password.', { problems })
   }
@@ -631,8 +633,8 @@ export async function acceptInvite(token, { password }, { ip }) {
   try {
     if (existing) {
       // They proved they own the inbox by opening the link: confirm the email
-      // (store logins must be confirmed). Their password is left as it is.
-      const { error } = await supabase.auth.admin.updateUserById(existing, { email_confirm: true })
+      // (store logins must be confirmed), and set the password if they chose one.
+      const { error } = await supabase.auth.admin.updateUserById(existing, { email_confirm: true, ...(setPassword ? { password } : {}) })
       if (error) throw error
     } else {
       const { error } = await supabase.auth.admin.createUser({
@@ -657,5 +659,5 @@ export async function acceptInvite(token, { password }, { ip }) {
     body: `${first} accepted your invite. ${storeName} is now Pending — it becomes Active once it buys a credit package.`,
     link: { screen: 'store', storeId: inv.store_id }, dedupeKey: `accepted:${inv.id}`,
   })
-  return { email, storeName, hadAccount: !!existing }
+  return { email, storeName, hadAccount: !!existing, passwordSet: setPassword }
 }
