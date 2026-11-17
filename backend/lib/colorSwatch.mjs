@@ -51,11 +51,23 @@ function solidPngBuffer(r, g, b, size = 64) {
   ])
 }
 
-function normalizeHex(hex) {
-  const raw = String(hex || '').trim()
-  if (!raw) return null
-  const withHash = raw.startsWith('#') ? raw : `#${raw}`
-  return /^#[0-9A-Fa-f]{6}$/.test(withHash) ? withHash : null
+/**
+ * '#RRGGBB', or null. Gemini sometimes drops the '#' ('FFDAB9') or answers
+ * with 3 digits or '0x…' — a colour without the '#' renders as nothing.
+ */
+export function normalizeHex(hex) {
+  const m = /^(?:#|0x)?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim())
+  if (!m) return null
+  const digits = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1]
+  return `#${digits.toUpperCase()}`
+}
+
+/** An AI swatch list with every hex as '#RRGGBB'; swatches without a usable colour are dropped. */
+export function cleanSwatches(list) {
+  if (!Array.isArray(list)) return []
+  return list
+    .map((c) => (c && typeof c === 'object' ? { ...c, hex: normalizeHex(c.hex) } : null))
+    .filter((c) => c?.name && c.hex)
 }
 
 /** Solid-color PNG data URL — Gemini accepts image/png, not SVG. */

@@ -7,7 +7,7 @@ A client has sent their measurements and a photo of themselves — study their c
   "narrative": "<exactly four short lines separated by a single newline character (\\n) each, in this order, each starting with one of these EXACT labels followed by an em dash (—):\n'Your palette —' 1-2 punchy sentences naming a specific colour palette with evocative names.\n'Your silhouettes —' 1-2 punchy sentences on the cuts and fits that flatter their actual build.\n'Wear now —' 1-2 punchy sentences on a piece or look they should reach for this week.\n'The move —' one punchy repeatable styling formula.>",
   "archetype": "<a short, evocative name for their style archetype>",
   "palettes": [
-    { "name": "<palette name>", "colors": [ { "name": "<evocative color name>", "hex": "<hex code>" } ] }
+    { "name": "<palette name>", "colors": [ { "name": "<evocative color name>", "hex": "<'#' then 6 hex digits, e.g. '#B97A56'>" } ] }
   ],
   "silhouettes": ["<short silhouette/fit descriptions that flatter them, 3-5 items>"],
   "silhouettesToAvoid": ["<cuts and fits that fight their build, each with a few words on why, 2-3 items>"],
@@ -64,8 +64,8 @@ Respond with strict JSON only, no markdown, no code fences, in exactly this shap
 {
   "undertone": "<'warm', 'cool', or 'neutral'>",
   "season": "<a personal colour analysis season, e.g. 'Warm Autumn', 'Cool Summer', 'Bright Spring', 'Deep Winter'>",
-  "flatteringColors": [ { "name": "<evocative color name>", "hex": "<hex code>", "why": "<one short line on why it suits them — undertone, contrast, eyes or hair>" } ],
-  "avoid": [ { "name": "<evocative color name>", "hex": "<hex code>", "why": "<one short line on why it works against them>" } ],
+  "flatteringColors": [ { "name": "<evocative color name>", "hex": "<'#' then 6 hex digits, e.g. '#B97A56'>", "why": "<one short line on why it suits them — undertone, contrast, eyes or hair>" } ],
+  "avoid": [ { "name": "<evocative color name>", "hex": "<'#' then 6 hex digits>", "why": "<one short line on why it works against them>" } ],
   "picks": [],
   "narrative": "<2-3 sentences, vivid and energetic, in a stylist's voice — open with a real reaction to their colouring, name the season and palette with specific evocative colours, and point them toward a first move>"
 }`

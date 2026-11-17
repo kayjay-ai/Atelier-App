@@ -38,3 +38,23 @@ test('payments: the order id picks the product kind', () => {
   assert.equal(kindOf('atelier_1793_xyz').name, 'creditPack')
   assert.equal(kindOf(undefined), null)
 })
+
+test('cleanSwatches: every hex comes out as #RRGGBB; unusable swatches are dropped', async () => {
+  const { cleanSwatches } = await import('../lib/colorSwatch.mjs')
+  assert.deepEqual(
+    cleanSwatches([
+      { name: 'Peach Blossom', hex: 'FFDAB9', why: 'warm' },
+      { name: 'Teal', hex: '#008080' },
+      { name: 'Short', hex: 'abc' },
+      { name: 'No colour', hex: 'peach' },
+      { hex: '#FFFFFF' },
+      'Coral',
+    ]),
+    [
+      { name: 'Peach Blossom', hex: '#FFDAB9', why: 'warm' },
+      { name: 'Teal', hex: '#008080' },
+      { name: 'Short', hex: '#AABBCC' },
+    ],
+  )
+  assert.deepEqual(cleanSwatches(undefined), [])
+})

@@ -9,6 +9,7 @@ import { imageToDataUri } from '../../lib/dataUri'
 import { isFallback, isRetryable } from '../../lib/aiOutcome'
 import { Colors, Typography, Space, Radius, Weight, FONT_DISPLAY, Shadow } from '../../lib/theme'
 import { EmptyState, Icon, Notice, Page, PillButton, Title, displayProps, useReducedMotion } from '../../lib/ui'
+import { swatchHex } from '../../lib/swatch'
 import type { ColorSwatch, StyleReport } from '../../lib/types'
 
 // Style tab (spec §3.4, docs/design/4.svg + 5.svg): one "Reveal My Style"
@@ -40,9 +41,9 @@ function useBreathingShimmer() {
 function SwatchList({ colors, faded }: { colors: ColorSwatch[]; faded?: boolean }) {
   return (
     <View style={s.swatchGrid}>
-      {colors.map((c) => (
+      {(colors ?? []).filter((c) => swatchHex(c?.hex)).map((c) => (
         <View key={c.name} style={s.swatchItem} accessible accessibilityLabel={`${c.name}${c.why ? `. ${c.why}` : ''}`}>
-          <View style={[s.swatchDot, { backgroundColor: c.hex }, faded && s.swatchDotAvoid]} />
+          <View style={[s.swatchDot, { backgroundColor: swatchHex(c.hex) }, faded && s.swatchDotAvoid]} />
           <Text style={s.swatchName}>{c.name}</Text>
           {!!c.why && <Text style={s.swatchWhy}>{c.why}</Text>}
         </View>

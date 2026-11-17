@@ -17,6 +17,7 @@ import { membershipEnabled } from '../lib/membership.mjs'
 import { verifySession } from '../lib/embedSession.mjs'
 import { callerOf } from '../lib/identity.mjs'
 import { garmentFromUrl } from '../lib/garmentFromUrl.mjs'
+import { cleanSwatches } from '../lib/colorSwatch.mjs'
 
 // =============================================================================
 // The AI features. Every one runs the same steps, in this order:
@@ -120,6 +121,9 @@ Please give me your stylist's read on what I should be wearing.`,
     accept: (d) => {
       if (!d.archetype) return false
       if (!Array.isArray(d.picks)) d.picks = []
+      if (Array.isArray(d.palettes)) {
+        d.palettes = d.palettes.map((p) => ({ ...p, colors: cleanSwatches(p?.colors) })).filter((p) => p.name && p.colors.length)
+      }
       return true
     },
   }),
@@ -137,7 +141,9 @@ router.post('/api/color', (req, res) => textFeature(req, res, {
     accept: (d) => {
       if (!d.undertone) return false
       if (!Array.isArray(d.picks)) d.picks = []
-      return true
+      d.flatteringColors = cleanSwatches(d.flatteringColors)
+      d.avoid = cleanSwatches(d.avoid)
+      return d.flatteringColors.length > 0
     },
   }),
   fallback: () => COLOR_FALLBACK,
