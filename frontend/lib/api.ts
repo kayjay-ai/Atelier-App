@@ -477,8 +477,12 @@ export interface OwnerProfile {
 export const fetchOwnerMe = () => ownerCall<OwnerProfile & { unread: number }>('GET', '/api/owner/me')
 export const updateOwnerProfile = (patch: { name?: string; phone?: string; notifyPrefs?: Partial<NotifyPrefs> }) =>
   ownerCall<OwnerProfile>('PATCH', '/api/owner/profile', patch)
-export const changeOwnerPassword = (current: string, next: string) =>
-  ownerCall<{ ok: true }>('POST', '/api/owner/profile/password', { current, next })
+/** Change password, step 1: email a 6-digit code to the signed-in owner. */
+export const sendOwnerPasswordCode = () =>
+  ownerCall<{ maskedEmail: string; resendInSec: number; expiresInSec: number }>('POST', '/api/owner/profile/password/code', {})
+/** Step 2: the emailed code and the new password. */
+export const changeOwnerPassword = (code: string, next: string) =>
+  ownerCall<{ ok: true }>('POST', '/api/owner/profile/password', { code, next })
 
 export interface OwnerSession { id: string; device: string; createdAt: string; lastActiveAt: string; expiresAt: string; remember: boolean; current: boolean }
 export const fetchOwnerSessions = () => ownerCall<{ sessions: OwnerSession[] }>('GET', '/api/owner/sessions')

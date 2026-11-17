@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { View, Text, ScrollView, Switch, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import {
-  ApiError, changeOwnerPassword, fetchOwnerSessions, signOutOtherOwnerSessions, updateOwnerProfile,
+  ApiError, changeOwnerPassword, sendOwnerPasswordCode, fetchOwnerSessions, signOutOtherOwnerSessions, updateOwnerProfile,
   type NotifyPrefs, type OwnerNotificationCategory, type OwnerSession,
 } from '../../../lib/api'
 import {
@@ -58,9 +58,13 @@ export default function OwnerProfile() {
   const dirty = !!me && (name.trim() !== me.owner.name || phone.trim() !== me.owner.phone)
 
   // Security
-  const [cur, setCur] = useState('')
+  // Change password, like the shopper and store apps: "Update password"
+  // emails a code, then the code and the new password.
+  const [pwStep, setPwStep] = useState<'start' | 'code'>('start')
+  const [pwCode, setPwCode] = useState('')
   const [pw, setPw] = useState('')
-  const [pw2, setPw2] = useState('')
+  const [codeSentTo, setCodeSentTo] = useState('')
+  const [resendIn, setResendIn] = useState(0)
   const [pwBusy, setPwBusy] = useState(false)
   const [pwErr, setPwErr] = useState<{ field?: string; text: string } | null>(null)
   const [sessions, setSessions] = useState<OwnerSession[] | null>(null)
@@ -94,17 +98,47 @@ export default function OwnerProfile() {
     }
   }
 
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const t = setTimeout(() => setResendIn((n) => n - 1), 1000)
+    return () => clearTimeout(t)
+  }, [resendIn])
+
+  function cancelPassword() {
+    setPwStep('start'); setPwCode(''); setPw(''); setPwErr(null)
+  }
+
+  async function sendPasswordCode(again = false) {
+    if (again && resendIn > 0) return
+    setPwErr(null)
+    if (!again) setPwBusy(true)
+    try {
+      const r = await sendOwnerPasswordCode()
+      setCodeSentTo(r.maskedEmail); setResendIn(r.resendInSec); setPwCode('')
+      setPwStep('code')
+      if (again) toast('A new code is on its way. Older codes no longer work.')
+    } catch (e) {
+      setPwErr({ text: ownerErrorText(e) })
+    } finally {
+      setPwBusy(false)
+    }
+  }
+
   async function changePassword() {
     setPwErr(null)
-    if (!passwordOk(pw) || pw !== pw2) return
+    if (pwCode.length !== 6) { setPwErr({ field: 'code', text: 'Enter the 6-digit code from the email.' }); return }
+    if (!passwordOk(pw)) return
     setPwBusy(true)
     try {
-      await changeOwnerPassword(cur, pw)
-      setCur(''); setPw(''); setPw2('')
+      await changeOwnerPassword(pwCode, pw)
+      cancelPassword()
       toast('Password changed. Your other devices were signed out.')
       loadSessions()
     } catch (e) {
-      setPwErr({ field: e instanceof ApiError ? e.extra.field : undefined, text: ownerErrorText(e) })
+      const code = e instanceof ApiError ? e.code : null
+      const field = code && ['wrong_code', 'expired', 'too_many_tries'].includes(code) ? 'code'
+        : e instanceof ApiError ? e.extra.field : undefined
+      setPwErr({ field, text: ownerErrorText(e) })
     } finally {
       setPwBusy(false)
     }
@@ -183,19 +217,38 @@ export default function OwnerProfile() {
         <Card>
           <Text style={p.section}>Security</Text>
           <Text style={p.sub}>Change password</Text>
-          <PasswordField label="Current password" value={cur} onChangeText={(v) => { setCur(v); setPwErr(null) }}
-            autoComplete="current-password" error={pwErr?.field === 'current' ? pwErr.text : null} />
-          <PasswordField label="New password" value={pw} onChangeText={(v) => { setPw(v); setPwErr(null) }}
-            autoComplete="new-password" error={pwErr?.field === 'next' ? pwErr.text : null} />
-          <PasswordChecklist password={pw} />
-          <PasswordField label="Confirm new password" value={pw2} onChangeText={setPw2} autoComplete="new-password"
-            error={pw2.length > 0 && pw !== pw2 ? 'The passwords don’t match.' : null} />
-          {pwErr && !pwErr.field && <View style={{ marginTop: Space.sm }}><Banner text={pwErr.text} /></View>}
-          <View style={p.saveRow}>
-            <Btn small label="Change password" loading={pwBusy} onPress={changePassword}
-              disabled={!cur || !passwordOk(pw) || pw !== pw2} />
-          </View>
-          <Text style={p.hint}>Changing your password signs out your other devices.</Text>
+          {pwStep === 'start' ? (
+            <>
+              <Text style={p.hint}>We’ll email a code to {me?.owner.email || 'your email'} to confirm it’s you, then you choose a new password.</Text>
+              {pwErr && <View style={{ marginTop: Space.sm }}><Banner text={pwErr.text} /></View>}
+              <View style={p.saveRow}>
+                <Btn small label="Update password" loading={pwBusy} onPress={() => sendPasswordCode()} />
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={{ marginTop: Space.sm }}>
+                <Banner tone="info" text={`We sent a 6-digit code to ${codeSentTo || me?.owner.email}. Check your inbox (and spam). It expires in 10 minutes.`} />
+              </View>
+              <Field label="Code from the email" value={pwCode}
+                onChangeText={(v) => { setPwCode(v.replace(/\D/g, '').slice(0, 6)); setPwErr(null) }}
+                placeholder="123456" keyboardType="number-pad" autoComplete="one-time-code"
+                error={pwErr?.field === 'code' ? pwErr.text : null} />
+              <Text style={[p.hint, resendIn > 0 ? null : p.link]} onPress={() => sendPasswordCode(true)} accessibilityRole="button">
+                {resendIn > 0 ? `Send a new code in ${resendIn}s` : 'Send a new code'}
+              </Text>
+              <PasswordField label="New password" value={pw} onChangeText={(v) => { setPw(v); setPwErr(null) }}
+                autoComplete="new-password" error={pwErr?.field === 'next' ? pwErr.text : null} onSubmitEditing={changePassword} />
+              <PasswordChecklist password={pw} />
+              {pwErr && pwErr.field !== 'code' && pwErr.field !== 'next' && <View style={{ marginTop: Space.sm }}><Banner text={pwErr.text} /></View>}
+              <View style={p.saveRow}>
+                <Btn small kind="ghost" label="Cancel" onPress={cancelPassword} disabled={pwBusy} />
+                <Btn small label="Set new password" loading={pwBusy} onPress={changePassword}
+                  disabled={pwCode.length !== 6 || !passwordOk(pw)} />
+              </View>
+              <Text style={p.hint}>Changing your password signs out your other devices.</Text>
+            </>
+          )}
 
           <Text style={[p.sub, { marginTop: Space.xl }]}>Active sessions</Text>
           {sessErr && <Banner text={sessErr} actionLabel="Retry" onAction={loadSessions} />}
@@ -278,6 +331,7 @@ const p = StyleSheet.create({
   section: { ...Typography.h3 },
   sub: { ...Typography.label, marginTop: Space.md },
   hint: { ...Typography.caption, color: Colors.textMuted, marginTop: Space.xs },
+  link: { ...Weight.semibold, color: Colors.secondary, textDecorationLine: 'underline' },
   two: { flexDirection: 'row', gap: Space.md },
   saveRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: Space.sm, marginTop: Space.md },
   row: {

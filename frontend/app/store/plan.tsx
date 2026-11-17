@@ -260,7 +260,7 @@ export default function PlanScreen() {
                   {p.current && <Tag label="Current plan" tone="dark" />}
                 </View>
                 <Text style={s.planPrice} numberOfLines={1}>{inr(p.priceInr)}</Text>
-                <Text style={s.muted}>per {p.cycle === 'annual' ? 'year' : 'month'} + GST{p.totalInr != null ? ` · ${inr(p.totalInr)} total` : ''}</Text>
+                <Text style={s.muted}>per {p.cycle === 'annual' ? 'year' : 'month'} + 18% GST</Text>
                 <Text style={s.planCredits}>{p.credits.toLocaleString('en-IN')} credits a month</Text>
                 <View style={{ flexGrow: 1 }} />
                 {showButton && (
@@ -288,7 +288,7 @@ export default function PlanScreen() {
                 <View key={k.id} style={[s.planCard, s.packCard, stackPlans ? s.planCardStack : s.planCardRow]}>
                   <View style={{ flex: 1, minWidth: 140, gap: 2 }}>
                     <Text style={s.planName}>{k.credits.toLocaleString('en-IN')} credits</Text>
-                    <Text style={s.muted}>{inr(k.priceInr)} + 18% GST · {inr(k.totalInr)} total</Text>
+                    <Text style={s.muted}>{inr(k.priceInr)} + 18% GST</Text>
                   </View>
                   <PillButton label="Buy" size="sm" variant="outline" disabled={!k.allowed} onPress={() => setPurchase({ kind: 'topup', pack: k })} style={{ minWidth: 96 }} />
                 </View>

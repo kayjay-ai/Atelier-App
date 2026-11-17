@@ -3,7 +3,7 @@ import { ownerOf } from '../lib/identity.mjs'
 import { clientIp } from '../lib/rateLimit.mjs'
 import {
   OwnerError, startVerification, resendCode, confirmCode, tokenStatus, setPassword, login, logout,
-  getProfile, updateProfile, changePassword, listSessions, revokeOtherSessions,
+  getProfile, updateProfile, changePassword, sendChangePasswordCode, listSessions, revokeOtherSessions,
 } from '../lib/ownerAuth.mjs'
 import {
   summary, queryStores, storeDetail, addStore, resendInvite, inviteLink, changeInviteEmail,
@@ -140,10 +140,12 @@ router.patch('/api/owner/profile', ownerRoute('owner profile update', (ctx, req)
   const b = body(req)
   return updateProfile(ctx, { name: b.name, phone: b.phone, notifyPrefs: b.notifyPrefs })
 }))
-// Body: { current, next }.
+// Change password: step 1 emails a code to the owner; step 2 body { code, next }
+// (older builds: { current, next }).
+router.post('/api/owner/profile/password/code', ownerRoute('owner change password code', (ctx) => sendChangePasswordCode(ctx)))
 router.post('/api/owner/profile/password', ownerRoute('owner change password', (ctx, req) => {
   const b = body(req)
-  return changePassword(ctx, { current: b.current, next: b.next })
+  return changePassword(ctx, { current: b.current, next: b.next, code: b.code, ...clientOf(req) })
 }))
 router.get('/api/owner/sessions', ownerRoute('owner sessions', async (ctx) => ({ sessions: await listSessions(ctx) })))
 router.delete('/api/owner/sessions', ownerRoute('owner sign out others', (ctx) => revokeOtherSessions(ctx)))

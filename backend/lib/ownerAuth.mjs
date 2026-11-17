@@ -568,15 +568,37 @@ export async function updateProfile(ctx, { name, phone, notifyPrefs }) {
   return getProfile({ ...ctx, owner: data })
 }
 
-/** Profile → Security → Change password. Ends every other session. */
-export async function changePassword(ctx, { current, next }) {
+/**
+ * Profile → Change password, step 1: email a 6-digit code to the owner's own
+ * address (the same 'reset' code as Forgot password). A new code voids the last.
+ */
+export async function sendChangePasswordCode(ctx) {
+  limit('owner-change-code', ctx.owner.owner_id, 5)
+  return issueCode(ctx.company.company_id, normEmail(ctx.owner.email), 'reset')
+}
+
+/**
+ * Profile → Change password, step 2. Body { code, next }: the emailed code
+ * proves it's the owner (the shopper and store apps work the same way). Older
+ * app builds send { current, next } instead. Ends every other session.
+ */
+export async function changePassword(ctx, { current, next, code, ip }) {
   limit('owner-change-password', ctx.owner.owner_id, 5)
-  if (typeof current !== 'string' || !current) throw new OwnerError(400, 'wrong_password', 'Enter your current password.', { field: 'current' })
+  const byCode = typeof code === 'string' && code.length > 0
+  if (!byCode && (typeof current !== 'string' || !current)) throw new OwnerError(400, 'wrong_password', 'Enter your current password.', { field: 'current' })
   const problems = passwordProblems(next)
   if (problems.length) throw new OwnerError(400, 'weak_password', 'Choose a stronger password.', { problems, field: 'next' })
-  if (current === next) throw new OwnerError(400, 'same_password', 'Your new password can’t be the same as your current one.', { field: 'next' })
-  if (!await passwordIsCurrent(ctx.owner.email, current, ctx.user.id)) {
-    throw new OwnerError(400, 'wrong_password', 'Your current password is incorrect.', { field: 'current' })
+  if (byCode) {
+    // Check the password first, so a code isn't used up on a password we'd refuse.
+    if (await passwordIsCurrent(ctx.owner.email, next, ctx.user.id)) {
+      throw new OwnerError(400, 'same_password', 'Your new password can’t be the same as your current one.', { field: 'next' })
+    }
+    await confirmCode({ email: ctx.owner.email, code, purpose: 'reset', ip })
+  } else {
+    if (current === next) throw new OwnerError(400, 'same_password', 'Your new password can’t be the same as your current one.', { field: 'next' })
+    if (!await passwordIsCurrent(ctx.owner.email, current, ctx.user.id)) {
+      throw new OwnerError(400, 'wrong_password', 'Your current password is incorrect.', { field: 'current' })
+    }
   }
   const supabase = db()
   const { error } = await supabase.auth.admin.updateUserById(ctx.user.id, { password: next })
