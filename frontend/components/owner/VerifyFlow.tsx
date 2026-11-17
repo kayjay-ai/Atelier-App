@@ -10,9 +10,11 @@ import { AuthShell } from './AuthShell'
 import { Banner, Btn, Field, LinkText, OtpInput, PasswordChecklist, PasswordField } from './kit'
 
 // Activation and Forgot password share these three screens (flow doc):
-//   A  store code + email → Verify        (POST /api/owner/activate/verify | /forgot)
+//   A  store code + email → Verify        (POST /api/owner/activate/verify)
+//      Forgot password: the email only     (POST /api/owner/forgot), like the shopper and store apps
 //   B  6-digit code from the email        (POST /api/owner/otp/confirm, /otp/resend)
 //   C  create / set a new password        (POST /api/owner/password) → signed in → Home
+//      (reset: one password field, as in the other apps; activation also confirms it)
 
 type Step = 'details' | 'code' | 'password'
 type Problem = { text: string; code: string | null }
@@ -125,7 +127,7 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
   }
 
   async function savePassword() {
-    if (!token || !passwordOk(pw) || pw !== pw2) return
+    if (!token || !passwordOk(pw) || (!reset && pw !== pw2)) return
     setBusy(true); setProblem(null)
     try {
       const { session } = await ownerSetPassword(token, pw)
@@ -143,18 +145,20 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
 
   // ── Screen A ───────────────────────────────────────────────────────────────
   if (step === 'details') {
-    const canVerify = orgCode.trim().length > 0 && looksLikeEmail(email) && !busy
+    const canVerify = (reset || orgCode.trim().length > 0) && looksLikeEmail(email) && !busy
     return (
       <AuthShell
         title={reset ? 'Reset your password' : 'Verify your account'}
         subtitle={reset
-          ? 'Enter your store code and the email registered for your organization. We’ll email you a code.'
+          ? 'Enter the email you sign in with. We’ll email you a 6-digit code to set a new password.'
           : 'Enter the store code Atelier gave you and the email it was registered to. We’ll email you a 6-digit code.'}
       >
-        <Field
-          label="Store code" value={orgCode} onChangeText={(v) => setOrgCode(v.toUpperCase().replace(/\s/g, ''))}
-          placeholder="ABCD" autoCapitalize="characters" autoCorrect={false} maxLength={12}
-        />
+        {!reset && (
+          <Field
+            label="Store code" value={orgCode} onChangeText={(v) => setOrgCode(v.toUpperCase().replace(/\s/g, ''))}
+            placeholder="ABCD" autoCapitalize="characters" autoCorrect={false} maxLength={12}
+          />
+        )}
         <Field
           label="Email" value={email} onChangeText={setEmail} placeholder="you@brand.com"
           keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email"
@@ -167,7 +171,7 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
             {problem.code === 'not_activated' && <Btn label="Activate now" kind="secondary" small onPress={toActivate} />}
           </View>
         )}
-        <Btn label="Verify" onPress={verify} loading={busy} disabled={!canVerify} style={{ marginTop: Space.lg }} />
+        <Btn label={reset ? 'Send code' : 'Verify'} onPress={verify} loading={busy} disabled={!canVerify} style={{ marginTop: Space.lg }} />
         <View style={s.links}><LinkText label="Back to sign in" onPress={toLogin} /></View>
       </AuthShell>
     )
@@ -197,13 +201,16 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
   return (
     <AuthShell title={reset ? 'Set a new password' : 'Create your password'} showSwitch={false}
       subtitle={reset ? 'Your other devices will be signed out.' : 'You’ll sign in with your email and this password from now on.'}>
-      <PasswordField label="New password" value={pw} onChangeText={setPw} autoComplete="new-password" />
+      <PasswordField label="New password" value={pw} onChangeText={setPw} autoComplete="new-password"
+        onSubmitEditing={reset ? savePassword : undefined} />
       <PasswordChecklist password={pw} />
-      <PasswordField
-        label="Confirm password" value={pw2} onChangeText={setPw2} autoComplete="new-password"
-        error={pw2.length > 0 && !match ? 'The passwords don’t match.' : null}
-        onSubmitEditing={savePassword}
-      />
+      {!reset && (
+        <PasswordField
+          label="Confirm password" value={pw2} onChangeText={setPw2} autoComplete="new-password"
+          error={pw2.length > 0 && !match ? 'The passwords don’t match.' : null}
+          onSubmitEditing={savePassword}
+        />
+      )}
       {problem && (
         <View style={s.problem}>
           <Banner tone="error" text={problem.text} />
@@ -212,7 +219,7 @@ export function VerifyFlow({ purpose }: { purpose: OwnerPurpose }) {
       )}
       <Btn
         label={reset ? 'Set new password' : 'Create password'} onPress={savePassword} loading={busy}
-        disabled={!passwordOk(pw) || !match || busy || problem?.code === 'already_active'} style={{ marginTop: Space.lg }}
+        disabled={!passwordOk(pw) || (!reset && !match) || busy || problem?.code === 'already_active'} style={{ marginTop: Space.lg }}
       />
     </AuthShell>
   )

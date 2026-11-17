@@ -159,12 +159,18 @@ async function issueCode(companyId, email, purpose) {
 export async function startVerification({ code, email, purpose, ip }) {
   const e = normEmail(email)
   const c = normCode(code)
-  if (!isEmail(e) || !c) throw new OwnerError(400, 'mismatch', MISMATCH)
+  // Forgot password needs only the email (like the shopper and store apps):
+  // the code goes to that inbox. Activation still needs the store code.
+  const byEmailOnly = purpose === 'reset' && !c
+  const mismatch = byEmailOnly
+    ? new OwnerError(400, 'mismatch', 'We couldn’t find an owner account for that email. Check it and try again.')
+    : new OwnerError(400, 'mismatch', MISMATCH)
+  if (!isEmail(e) || (!c && !byEmailOnly)) throw mismatch
   limit('owner-verify-ip', ip, 20)
   limit('owner-verify-email', e, 5)
 
-  const company = await companyForCodeAndEmail(c, e)
-  if (!company) throw new OwnerError(400, 'mismatch', MISMATCH)
+  const company = byEmailOnly ? await companyForEmail(e) : await companyForCodeAndEmail(c, e)
+  if (!company) throw mismatch
   if (company.status === 'inactive') throw new OwnerError(403, 'company_inactive', PAUSED)
   let owner = await ownerForCompany(company.company_id)
   if (owner?.status === 'blocked') throw new OwnerError(403, 'owner_blocked', BLOCKED)
