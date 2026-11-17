@@ -6,6 +6,7 @@ import { fetchOwnerStore, type OwnerStoreDetail } from '../../lib/api'
 import { copyText, fmtDate, inr, num, ownerErrorText, preActive, relativeTime } from '../../lib/owner'
 import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
 import { Icon } from '../../lib/ui'
+import { composeEmail } from '../../lib/emailChooser'
 import { Banner, Btn, Pill, Skeleton, StatusPill, toast } from './kit'
 import { storeActions } from './storeActions'
 
@@ -187,7 +188,7 @@ export function StoreDrawer({ storeId, section, onClose, onChanged }: {
                   )}
                   {!!st.managerEmail && (
                     <Btn small kind="secondary" icon="mail" label="Contact manager"
-                      onPress={() => Linking.openURL(`mailto:${st.managerEmail}?subject=${encodeURIComponent(`Atelier — ${st.name}`)}`)} />
+                      onPress={() => composeEmail({ to: st.managerEmail, subject: `Atelier — ${st.name}` })} />
                   )}
                   {['active', 'pending', 'low_credits', 'expired'].includes(st.status) && (
                     <Btn small kind="ghost" label="Deactivate store" onPress={() => storeActions.deactivate(st, changed)} />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { composeEmail } from '../../lib/emailChooser'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Redirect, router, usePathname } from 'expo-router'
 import { Tabs } from 'expo-router/js-tabs'
@@ -174,7 +175,7 @@ function FullScreenMessage({ title, body, icon = 'lock', action }: {
           {action && <PillButton variant="gold" label={action.label} onPress={action.onPress} size="md" />}
           {!!SUPPORT_EMAIL && (
             <PillButton variant={action ? 'ghost' : 'gold'} label="Contact Atelier support" size="md"
-              onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} style={action ? x.ghost : undefined} />
+              onPress={() => composeEmail({ to: SUPPORT_EMAIL, subject: `Atelier support — ${title}` })} style={action ? x.ghost : undefined} />
           )}
         </View>
         <TextLink label="Sign out of this device" tone="light" onPress={async () => { await signOutStore(); router.replace('/auth') }} />

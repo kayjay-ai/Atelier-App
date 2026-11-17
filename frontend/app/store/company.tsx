@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { View, Text, Image, StyleSheet, Linking } from 'react-native'
+import { View, Text, Image, StyleSheet } from 'react-native'
+import { composeEmail } from '../../lib/emailChooser'
 import { router, useFocusEffect } from 'expo-router'
 import { supabase } from '../../lib/supabaseClient'
 import { useAccountStore } from '../../lib/account'
@@ -97,7 +98,7 @@ export default function CompanyScreen() {
               New customer, take their photo, upload a garment, then Try It On and choose the customer. Every result is kept in their folder for 15 days.
             </Text>
             {SUPPORT_EMAIL
-              ? <TextLink label={`Email ${SUPPORT_EMAIL}`} icon="mail" onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} />
+              ? <TextLink label={`Email ${SUPPORT_EMAIL}`} icon="mail" onPress={() => composeEmail({ to: SUPPORT_EMAIL, subject: `Atelier help — ${client.companyName}` })} />
               : <Text style={s.muted}>Contact your Atelier account manager for help.</Text>}
           </Card>
 

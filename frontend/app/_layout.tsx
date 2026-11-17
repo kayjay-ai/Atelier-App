@@ -9,6 +9,7 @@ import { Montserrat_600SemiBold } from '@expo-google-fonts/montserrat/600SemiBol
 import { Italiana_400Regular } from '@expo-google-fonts/italiana/400Regular'
 import { Colors, NATIVE_FONTS } from '../lib/theme'
 import { DialogHost, ToastHost } from '../lib/ui'
+import { EmailChooserHost } from '../lib/emailChooser'
 import { supabase } from '../lib/supabaseClient'
 import { useAccountStore } from '../lib/account'
 import { useStoreSession } from '../lib/b2b'
@@ -66,6 +67,7 @@ export default function RootLayout() {
       {/* Toasts and dialogs for every part of the app (shopper, store, owner). */}
       <ToastHost />
       <DialogHost />
+      <EmailChooserHost />
     </View>
   )
 }

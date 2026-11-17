@@ -9,6 +9,7 @@ import {
   fetchB2BBilling, createB2BOrder, type B2BBilling, type B2BPlanOption, type B2BTopupPack, type B2BPaymentStatus,
 } from '../../lib/api'
 import { openB2BCheckout, confirmB2BPayment } from '../../lib/b2bCheckout'
+import { composeEmail } from '../../lib/emailChooser'
 import { Colors, Typography, Space, Radius, Weight } from '../../lib/theme'
 import { Card, Checkbox, Icon, Notice, Page, PageHeader, PillButton, SectionHeader, Sheet, Tag, TextLink } from '../../lib/ui'
 
@@ -26,8 +27,7 @@ const fmtDate = (iso: string | null) =>
 
 function requestChange(subject: string, company: string) {
   if (!SUPPORT_EMAIL) return
-  const body = `Company: ${company}\n\n`
-  Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`)
+  composeEmail({ to: SUPPORT_EMAIL, subject, body: `Company: ${company}\n\n` })
 }
 
 interface Invoice {
